@@ -211,7 +211,7 @@ def findCommonQuietAreas(areas, length, min_length):
 def calculateHVSR(stream, intervals, window_length, method, options,
                   master_method, cutoff_value, smoothing=None,
                   smoothing_count=1, smoothing_constant=40,
-                  message_function=None, bin_samples=100, bin_sampling='log'):
+                  message_function=None, bin_samples=100, bin_sampling='log',f_min=0.1,f_max=50.0):
     """
     Calculates the HVSR curve.
     """
@@ -368,8 +368,8 @@ def calculateHVSR(stream, intervals, window_length, method, options,
     # Use a Morlet CWT and isolate via the vertical spectrum maxima
     elif method == 'cwt':
         good_length = bin_samples
-        f_min = 0.20
-        f_max = 20.0
+        #f_min = 0.20
+        #f_max = 20.0
         hvsr_matrix = np.ma.empty((length, good_length))
         num_good_intervals = 0
         for _i, interval in enumerate(intervals):
@@ -438,8 +438,8 @@ def calculateHVSR(stream, intervals, window_length, method, options,
     # Use a PyWT Morlet CWT and isolate via the vertical spectrum maxima
     elif method == 'cwt2':
         good_length = bin_samples
-        f_min = 0.25
-        f_max = 20.0
+        #f_min = 0.25
+        #f_max = 20.0
         hvsr_matrix = np.ma.empty((length, good_length))
         num_good_intervals = 0
         for _i, interval in enumerate(intervals):
