@@ -25,11 +25,13 @@ runprefix = 'wide1_'
 
 #dr = '/g/data/ha3/Passive/Stavely/'
 dr = '/g/data/ha3/Passive/OvernightData/STAVELY/S06PS/Seismometer_data/S0600/S0600miniSEED/'
+#dr = 'data/S0600miniSEED/'
 #dr = '/g/data/ha3/Passive/OvernightData/Southern_Thompson_2016/AdventureWay1/aw05/AW05_miniSEED/'
 #dr = '/g/data/ha3/Passive/OvernightData/Southern_Thompson_2016/Overshot1/OV04/OV04_miniSEED/'
 #dr = '/g/data/ha3/Passive/OvernightData/Southern_Thompson_2016/Eulo1/EU13/EU13_miniSEED/'
 #dr = '/g/data/ha3/Passive/OvernightData/EUCLA_PASSIVE/GUINEWARRA/GB12/GB12_miniSEED/'
 spectra_method='cwt'
+#spectra_method='st'
 #spectra_method='single taper'
 
 st = Stream()

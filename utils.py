@@ -4,7 +4,10 @@ import numpy as np
 from obspy.core import UTCDateTime
 from scipy.signal.signaltools import detrend
 from obspy.signal.tf_misfit import cwt
-
+import mlpy.wavelet as wave
+import stockwell.smt as smt
+from scipy import interpolate
+import functools
 
 def toQDateTime(dt):
     """
@@ -108,15 +111,44 @@ def getAreasWithinThreshold(c_funct, threshold, min_width, feather=0):
     return np.array(areas)
 
 
-def cwt_TFA(data,delta,nf,f_min=0,f_max=0):
-    wl = data.shape[0]
-    if f_min==0:
-        f_min = 1.0/wl
-    if f_max==0:
-        f_max = 0.4/delta 
-    fval = np.logspace(np.log10(f_min), np.log10(f_max), nf)
-    res = cwt(data,delta,8,f_min,f_max,nf)
-    return res, fval
+def cwt_TFA(data,delta,nf,f_min=0,f_max=0, dj=0, wf=None, p=0):
+    if(wf==None):
+    # using cwt from obspy
+        wl = data.shape[0]
+        if f_min==0:
+            f_min = 1.0/wl
+        if f_max==0:
+            f_max = 0.4/delta 
+        fval = np.logspace(np.log10(f_min), np.log10(f_max), nf)
+        res = cwt(data,delta,8,f_min,f_max,nf)
+        return res, fval
+    else:
+    # using cwt from mlpy 
+        npts = data.shape[0]
+        
+        #scales      = wave.autoscales(npts, delta, dj, wf, p)
+        freqs    = np.logspace(np.log10(f_min), np.log10(f_max), nf)
+        fperiods = 1./freqs
+        scales   = wave.scales_from_fourier(fperiods, wf, p)
+        cfs      = wave.cwt(data, delta, scales, wf, p)
+        
+        return cfs, freqs, scales
+    #end if
+#end func
+
+def st_TFA(data, delta, nf,f_min=0,f_max=0):
+    cfs = smt.st(data)
+    npts = int(data.shape[0])
+    freqs = np.arange(0, npts/2+1)*delta*2.
+
+    def st_freq(f):
+        return int(np.floor(f * npts / (1./delta) + .5))
+    #end func
+    freqsOut = np.logspace(np.log10(f_min), np.log10(f_max), nf)
+    indices = map(st_freq, freqsOut)
+
+    return cfs[indices,:], freqsOut
+
 
 def single_taper_spectrum(data, delta, taper_name=None):
     """

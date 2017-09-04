@@ -21,6 +21,7 @@ from scipy.interpolate import interp1d
 from scipy.signal import argrelextrema
 
 import pywt
+import mlpy.wavelet as wave
 
 from utils import *
 from konno_ohmachi_smoothing import calculate_smoothing_matrix
@@ -435,11 +436,15 @@ def calculateHVSR(stream, intervals, window_length, method, options,
             num_good_intervals += 1
         # Cut the hvsr matrix.
         hvsr_matrix = hvsr_matrix[0:num_good_intervals, :]
-    # Use a PyWT Morlet CWT and isolate via the vertical spectrum maxima
+    # Use a mlpy Morlet CWT and isolate via the vertical spectrum maxima
     elif method == 'cwt2':
         good_length = bin_samples
         #f_min = 0.25
         #f_max = 20.0
+        omega0 = 8
+        dj     = 0.25
+        wf     = 'morlet'
+
         hvsr_matrix = np.ma.empty((length, good_length))
         num_good_intervals = 0
         for _i, interval in enumerate(intervals):
@@ -457,12 +462,9 @@ def calculateHVSR(stream, intervals, window_length, method, options,
             h2 = stream[h[1]].data[interval[0]: interval[0] + \
                                 window_length]
             # Calculate the spectra.
-            v_cwt, v_freq = cwt_TFA(v,
-                                    stream[0].stats.delta, good_length, f_min, f_max)
-            h1_cwt, h1_freq = cwt_TFA(h1,
-                                    stream[0].stats.delta, good_length, f_min, f_max)
-            h2_cwt, h2_freq = cwt_TFA(h2,
-                                    stream[0].stats.delta, good_length, f_min, f_max)
+            v_cwt, v_freq, v_scales    = cwt_TFA(v,  stream[0].stats.delta, good_length, f_min, f_max, dj, wf, omega0)
+            h1_cwt, h1_freq, h1_scales = cwt_TFA(h1, stream[0].stats.delta, good_length, f_min, f_max, dj, wf, omega0)
+            h2_cwt, h2_freq, h2_sclaes = cwt_TFA(h2, stream[0].stats.delta, good_length, f_min, f_max, dj, wf, omega0)
             # Convert to spectrum via vertical maxima search
             h_cwt = np.sqrt((h1_cwt ** 2 + h2_cwt ** 2)) # FIXME test 0.5 * inner
             v_cwt = np.abs(v_cwt)
@@ -501,7 +503,76 @@ def calculateHVSR(stream, intervals, window_length, method, options,
             if _i == 0:
                 good_freq = v_freq
             # Store it into the matrix if it has the correct length.
-            hvsr_matrix[num_good_intervals, :] = hv_spec
+            hvsr_matrix[num_good_intervals, 0:hv_spec.shape[0]] = hv_spec
+            num_good_intervals += 1
+        # Cut the hvsr matrix.
+        hvsr_matrix = hvsr_matrix[0:num_good_intervals, :]
+    # Use a Stockwell transform and isolate via the vertical spectrum maxima
+    elif method == 'st':
+        good_length = bin_samples
+        #f_min = 0.25
+        #f_max = 20.0
+
+        hvsr_matrix = np.ma.empty((length, good_length))
+        num_good_intervals = 0
+        for _i, interval in enumerate(intervals):
+            if message_function:
+                message_function('Calculating HVSR %i of %i...' % \
+                                 (_i+1, length))
+            v = [_j for _j, trace in enumerate(stream) if \
+                 trace.stats.orientation == 'vertical']
+            h = [_j for _j, trace in enumerate(stream) if \
+                 trace.stats.orientation == 'horizontal']
+            v = stream[v[0]].data[interval[0]: interval[0] + \
+                               window_length]
+            h1 = stream[h[0]].data[interval[0]: interval[0] + \
+                                window_length]
+            h2 = stream[h[1]].data[interval[0]: interval[0] + \
+                                window_length]
+            # Calculate the spectra.
+            io = None
+            v_cwt, v_freq   = st_TFA(v,  stream[0].stats.delta, good_length, f_min, f_max)
+            h1_cwt, h1_freq = st_TFA(h1, stream[0].stats.delta, good_length, f_min, f_max)
+            h2_cwt, h2_freq = st_TFA(h2, stream[0].stats.delta, good_length, f_min, f_max)
+            # Convert to spectrum via vertical maxima search
+            h_cwt = np.sqrt((h1_cwt ** 2 + h2_cwt ** 2)) # FIXME test 0.5 * inner
+            v_cwt = np.abs(v_cwt)
+            v_spec = np.ma.array(np.zeros(v_freq.shape[0]),mask=np.ones(v_freq.shape[0]))
+            h_spec = np.ma.array(np.zeros(v_freq.shape[0]),mask=np.ones(v_freq.shape[0]))
+            #h_spec = np.zeros(v_freq.shape[0])
+            for findex in xrange(v_freq.shape[0]):
+                f = v_freq[findex]
+                rayleighDelay = int(0.25 * (1.0/f) * stream[0].stats.sampling_rate + 0.5) # the + 0.5 at the end is to round to nearest for integer reference
+                extrema = argrelextrema(v_cwt[findex,rayleighDelay:-rayleighDelay], np.greater)
+                e = extrema[0]
+                if e.shape[0] == 0:
+                    print "No peaks found for frequency " + str(f)
+                    v_spec[findex] = np.ma.masked
+                    h_spec[findex] = np.ma.masked
+                else:
+                    vmax = v_cwt[findex,e]
+                    hmax_neg = h_cwt[findex,e-rayleighDelay]
+                    hmax_pos = h_cwt[findex,e+rayleighDelay]
+                    #for now, average it.
+                    #h_numer = np.sqrt(hmax_neg**2 + hmax_pos**2) #RMS creates bias
+                    h_numer = 0.5 * (hmax_neg + hmax_pos)
+                    v_numer = vmax
+                    h_spec[findex] = np.sum(h_numer) / h_numer.shape[0]
+                    v_spec[findex] = np.sum(v_numer) / v_numer.shape[0]
+            # Apply smoothing.
+            if smoothing:
+                if 'konno-ohmachi' in smoothing.lower():
+                    if _i == 0:
+                        sm_matrix = calculate_smoothing_matrix(v_freq,
+                                                           smoothing_constant)
+                    for _j in xrange(smoothing_count):
+                        v_spec = np.dot(v_spec, sm_matrix)
+                        h_spec = np.dot(h_spec, sm_matrix)
+            hv_spec = h_spec / v_spec
+            if _i == 0:
+                good_freq = v_freq
+            # Store it into the matrix if it has the correct length.
+            hvsr_matrix[num_good_intervals, 0:hv_spec.shape[0]] = hv_spec
             num_good_intervals += 1
         # Cut the hvsr matrix.
         hvsr_matrix = hvsr_matrix[0:num_good_intervals, :]
