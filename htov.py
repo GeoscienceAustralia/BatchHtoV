@@ -388,22 +388,32 @@ def calculateHVSR(stream, intervals, window_length, method, options,
             h2 = stream[h[1]].data[interval[0]: interval[0] + \
                                 window_length]
             # Calculate the spectra.
-            v_cwt, v_freq = cwt_TFA(v,
-                                    stream[0].stats.delta, good_length, f_min, f_max)
-            h1_cwt, h1_freq = cwt_TFA(h1,
-                                    stream[0].stats.delta, good_length, f_min, f_max)
-            h2_cwt, h2_freq = cwt_TFA(h2,
-                                    stream[0].stats.delta, good_length, f_min, f_max)
+            v_cwt, v_freq, v_scales = cwt_TFA(v,
+                                    stream[0].stats.delta, good_length, f_min, f_max, useMlpy=False)
+            h1_cwt, h1_freq, v_scales = cwt_TFA(h1,
+                                    stream[0].stats.delta, good_length, f_min, f_max, useMlpy=False)
+            h2_cwt, h2_freq, v_scales = cwt_TFA(h2,
+                                    stream[0].stats.delta, good_length, f_min, f_max, useMlpy=False)
             # Convert to spectrum via vertical maxima search
-            h_cwt = np.sqrt((h1_cwt ** 2 + h2_cwt ** 2)) # FIXME test 0.5 * inner
+            h_cwt = np.abs(np.sqrt((h1_cwt ** 2 + h2_cwt ** 2))) # FIXME test 0.5 * inner
             v_cwt = np.abs(v_cwt)
             v_spec = np.ma.array(np.zeros(v_freq.shape[0]),mask=np.ones(v_freq.shape[0]))
             h_spec = np.ma.array(np.zeros(v_freq.shape[0]),mask=np.ones(v_freq.shape[0]))
             #h_spec = np.zeros(v_freq.shape[0])
+
+            # Compute cone of influence for morlet wavelets (Torrence and Compo 1998)
+            # COI = sqrt(2.) * s
+            # , where s is wavelet scale.
+            cois = np.int_(np.floor(np.sqrt(2.)*v_scales*stream[0].stats.sampling_rate + 0.5))
             for findex in xrange(v_freq.shape[0]):
                 f = v_freq[findex]
                 rayleighDelay = int(0.25 * (1.0/f) * stream[0].stats.sampling_rate + 0.5) # the + 0.5 at the end is to round to nearest for integer reference
-                extrema = argrelextrema(v_cwt[findex,rayleighDelay:-rayleighDelay], np.greater)
+
+                # exclude cone of influence from regions searched for peaks.
+                startIdx = rayleighDelay if (rayleighDelay>cois[findex]) else cois[findex]
+                endIdx = v_cwt.shape[1] - cois[findex] - 1
+                extrema = argrelextrema(v_cwt[findex,
+                                        startIdx:endIdx], np.greater)
                 e = extrema[0]
                 if e.shape[0] == 0:
                     print "No peaks found for frequency " + str(f)
@@ -439,11 +449,6 @@ def calculateHVSR(stream, intervals, window_length, method, options,
     # Use a mlpy Morlet CWT and isolate via the vertical spectrum maxima
     elif method == 'cwt2':
         good_length = bin_samples
-        #f_min = 0.25
-        #f_max = 20.0
-        omega0 = 8
-        dj     = 0.25
-        wf     = 'morlet'
 
         hvsr_matrix = np.ma.empty((length, good_length))
         num_good_intervals = 0
@@ -462,19 +467,30 @@ def calculateHVSR(stream, intervals, window_length, method, options,
             h2 = stream[h[1]].data[interval[0]: interval[0] + \
                                 window_length]
             # Calculate the spectra.
-            v_cwt, v_freq, v_scales    = cwt_TFA(v,  stream[0].stats.delta, good_length, f_min, f_max, dj, wf, omega0)
-            h1_cwt, h1_freq, h1_scales = cwt_TFA(h1, stream[0].stats.delta, good_length, f_min, f_max, dj, wf, omega0)
-            h2_cwt, h2_freq, h2_sclaes = cwt_TFA(h2, stream[0].stats.delta, good_length, f_min, f_max, dj, wf, omega0)
+            v_cwt, v_freq, v_scales    = cwt_TFA(v,  stream[0].stats.delta, good_length, f_min, f_max)
+            h1_cwt, h1_freq, h1_scales = cwt_TFA(h1, stream[0].stats.delta, good_length, f_min, f_max)
+            h2_cwt, h2_freq, h2_sclaes = cwt_TFA(h2, stream[0].stats.delta, good_length, f_min, f_max)
             # Convert to spectrum via vertical maxima search
-            h_cwt = np.sqrt((h1_cwt ** 2 + h2_cwt ** 2)) # FIXME test 0.5 * inner
+            h_cwt = np.abs(np.sqrt((h1_cwt ** 2 + h2_cwt ** 2))) # FIXME test 0.5 * inner
             v_cwt = np.abs(v_cwt)
             v_spec = np.ma.array(np.zeros(v_freq.shape[0]),mask=np.ones(v_freq.shape[0]))
             h_spec = np.ma.array(np.zeros(v_freq.shape[0]),mask=np.ones(v_freq.shape[0]))
             #h_spec = np.zeros(v_freq.shape[0])
+
+            # Compute cone of influence for morlet wavelets (Torrence and Compo 1998)
+            # COI = sqrt(2.) * s
+            # , where s is wavelet scale.
+            cois = np.int_(np.floor(np.sqrt(2.)*v_scales*stream[0].stats.sampling_rate + 0.5))
             for findex in xrange(v_freq.shape[0]):
+
                 f = v_freq[findex]
                 rayleighDelay = int(0.25 * (1.0/f) * stream[0].stats.sampling_rate + 0.5) # the + 0.5 at the end is to round to nearest for integer reference
-                extrema = argrelextrema(v_cwt[findex,rayleighDelay:-rayleighDelay], np.greater)
+
+                # exclude cone of influence from regions searched for peaks.
+                startIdx = rayleighDelay if (rayleighDelay>cois[findex]) else cois[findex]
+                endIdx = v_cwt.shape[1] - cois[findex] - 1
+                extrema = argrelextrema(v_cwt[findex,
+                                        startIdx:endIdx], np.greater)
                 e = extrema[0]
                 if e.shape[0] == 0:
                     print "No peaks found for frequency " + str(f)
@@ -535,7 +551,7 @@ def calculateHVSR(stream, intervals, window_length, method, options,
             h1_cwt, h1_freq = st_TFA(h1, stream[0].stats.delta, good_length, f_min, f_max)
             h2_cwt, h2_freq = st_TFA(h2, stream[0].stats.delta, good_length, f_min, f_max)
             # Convert to spectrum via vertical maxima search
-            h_cwt = np.sqrt((h1_cwt ** 2 + h2_cwt ** 2)) # FIXME test 0.5 * inner
+            h_cwt = np.abs(np.sqrt((h1_cwt ** 2 + h2_cwt ** 2))) # FIXME test 0.5 * inner
             v_cwt = np.abs(v_cwt)
             v_spec = np.ma.array(np.zeros(v_freq.shape[0]),mask=np.ones(v_freq.shape[0]))
             h_spec = np.ma.array(np.zeros(v_freq.shape[0]),mask=np.ones(v_freq.shape[0]))
