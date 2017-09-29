@@ -9,6 +9,7 @@ import stockwell.smt as smt
 from scipy import interpolate
 import functools
 
+
 def toQDateTime(dt):
     """
     Converts a UTCDateTime object to a QDateTime object.
@@ -111,44 +112,68 @@ def getAreasWithinThreshold(c_funct, threshold, min_width, feather=0):
     return np.array(areas)
 
 
-def cwt_TFA(data,delta,nf,f_min=0,f_max=0, dj=0, wf=None, p=0):
-    if(wf==None):
-    # using cwt from obspy
-        wl = data.shape[0]
-        if f_min==0:
-            f_min = 1.0/wl
-        if f_max==0:
-            f_max = 0.4/delta 
-        fval = np.logspace(np.log10(f_min), np.log10(f_max), nf)
-        res = cwt(data,delta,8,f_min,f_max,nf)
-        return res, fval
-    else:
-    # using cwt from mlpy 
-        npts = data.shape[0]
-        
-        #scales      = wave.autoscales(npts, delta, dj, wf, p)
-        freqs    = np.logspace(np.log10(f_min), np.log10(f_max), nf)
-        fperiods = 1./freqs
-        scales   = wave.scales_from_fourier(fperiods, wf, p)
-        cfs      = wave.cwt(data, delta, scales, wf, p)
-        
-        return cfs, freqs, scales
-    #end if
-#end func
+def cwt_TFA(data, delta, nf, f_min=0, f_max=0, w0=8, useMlpy=True):
+    """
+    :param data: time dependent signal.
+    :param delta: time step between two samples in st (in seconds)
+    :param nf: number of logarithmically spaced frequencies between fmin and
+               fmax
+    :param f_min: minimum frequency (in Hz)
+    :param f_max: maximum frequency (in Hz)
+    :param wf: wavelet to use
+    :param w0: parameter w0 for morlet wavelets
+    :param useMlpy: use the continuous wavelet transform from MLPY; default is that
+           from ObsPy
+    :return: 1. time frequency representation of data, type numpy.ndarray of complex
+                values, shape = (nf, len(data)).
+             2. frequency bins
+             3. wavelet scales
+    """
 
-def st_TFA(data, delta, nf,f_min=0,f_max=0):
+    wl = data.shape[0]
+    if f_min == 0:
+        f_min = 1.0 / wl
+    if f_max == 0:
+        f_max = 0.4 / delta
+
+    freqs = np.logspace(np.log10(f_min), np.log10(f_max), nf)
+
+    if (useMlpy == False):
+        # using cwt from obspy. Note that ObsPy only supports morlet
+        # wavelets at present.
+        cfs = cwt(data, delta, w0, f_min, f_max, nf)
+
+        fperiods = 1. / freqs
+        # using scales_from_fourier from mlpy to compute wavelet scales
+        scales = wave.scales_from_fourier(fperiods, 'morlet', w0)
+
+        return cfs, freqs, scales
+    else:
+        # using morlet cwt from mlpy
+        npts = data.shape[0]
+
+        fperiods = 1. / freqs
+        scales = wave.scales_from_fourier(fperiods, 'morlet', w0)
+        cfs = wave.cwt(data, delta, scales, 'morlet', w0)
+
+        return cfs, freqs, scales
+    # end if
+# end func
+
+def st_TFA(data, delta, nf, f_min=0, f_max=0):
     cfs = smt.st(data)
     npts = int(data.shape[0])
-    freqs = np.arange(0, npts/2+1)*delta*2.
 
+    # function that maps frequencies to indices
     def st_freq(f):
-        return int(np.floor(f * npts / (1./delta) + .5))
-    #end func
+        return int(np.floor(f * npts / (1. / delta) + .5))
+    # end func
+
     freqsOut = np.logspace(np.log10(f_min), np.log10(f_max), nf)
     indices = map(st_freq, freqsOut)
 
-    return cfs[indices,:], freqsOut
-
+    return cfs[indices, :], freqsOut
+#end func
 
 def single_taper_spectrum(data, delta, taper_name=None):
     """

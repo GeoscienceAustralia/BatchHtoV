@@ -143,6 +143,9 @@ def create_HVSR(filename, vertical_channel=None, spectra_method='multitaper',
     hvsr_matrix, hvsr_freq, length, master_curve, error = \
             calculateHVSR(stream, intervals, window_length, spectra_method,
                           spectra_options, master_curve_method, cutoff_value,
-			  smoothing=smoothing,
-                          message_function=message_function,bin_samples=bin_samples,bin_sampling=bin_sampling,f_min=f_min,f_max=f_max)
+			              smoothing=smoothing,
+                          message_function=message_function,
+                          bin_samples=bin_samples,
+                          bin_sampling=bin_sampling,
+                          f_min=f_min,f_max=f_max)
     return master_curve, hvsr_freq, error, hvsr_matrix

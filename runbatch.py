@@ -30,7 +30,8 @@ dr = '/g/data/ha3/Passive/OvernightData/STAVELY/S06PS/Seismometer_data/S0600/S06
 #dr = '/g/data/ha3/Passive/OvernightData/Southern_Thompson_2016/Overshot1/OV04/OV04_miniSEED/'
 #dr = '/g/data/ha3/Passive/OvernightData/Southern_Thompson_2016/Eulo1/EU13/EU13_miniSEED/'
 #dr = '/g/data/ha3/Passive/OvernightData/EUCLA_PASSIVE/GUINEWARRA/GB12/GB12_miniSEED/'
-spectra_method='cwt'
+
+spectra_method='cwt2'
 #spectra_method='st'
 #spectra_method='single taper'
 
@@ -43,7 +44,15 @@ st.merge(method=1,fill_value=0)
 #st = st.slice(st[0].stats.starttime, st[0].stats.starttime+28800)
 print "stream length = " + str(len(st))
 
-(master_curve, hvsr_freq, error, hvsr_matrix) = batch.create_HVSR(st,spectra_method=spectra_method,spectra_options={'time_bandwidth':3.5, 'number_of_tapers':None, 'quadratic':False, 'adaptive':True,'nfft':None,'taper':'blackman'},master_curve_method='mean',cutoff_value=0.0,window_length=50.0,bin_samples=nfrequencies,f_min=initialfreq,f_max=finalfreq)
+(master_curve, hvsr_freq, error, hvsr_matrix) = batch.create_HVSR(st,spectra_method=spectra_method,
+																  spectra_options={'time_bandwidth':3.5,
+																				   'number_of_tapers':None,
+																				   'quadratic':False,
+                                                                                   'adaptive':True,'nfft':None,
+                                                                                   'taper':'blackman'},
+                                                                  master_curve_method='mean',cutoff_value=0.0,
+                                                                  window_length=50.0,bin_samples=nfrequencies,
+                                                                  f_min=initialfreq,f_max=finalfreq)
 
 nwindows = len(hvsr_matrix)
 
