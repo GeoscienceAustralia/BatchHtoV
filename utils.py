@@ -115,15 +115,15 @@ def getAreasWithinThreshold(c_funct, threshold, min_width, feather=0):
 def cwt_TFA(data, delta, nf, f_min=0, f_max=0, w0=8, useMlpy=True):
     """
     :param data: time dependent signal.
-    :param delta: time step between two samples in st (in seconds)
+    :param delta: time step between two samples in data (in seconds)
     :param nf: number of logarithmically spaced frequencies between fmin and
                fmax
     :param f_min: minimum frequency (in Hz)
     :param f_max: maximum frequency (in Hz)
     :param wf: wavelet to use
     :param w0: parameter w0 for morlet wavelets
-    :param useMlpy: use the continuous wavelet transform from MLPY; default is that
-           from ObsPy
+    :param useMlpy: use the continuous wavelet transform from MLPY by default, otherwise
+           use alternative implementation from ObsPy
     :return: 1. time frequency representation of data, type numpy.ndarray of complex
                 values, shape = (nf, len(data)).
              2. frequency bins
