@@ -12,16 +12,22 @@ from matplotlib import gridspec
 import scipy
 import calendar
 import math
+import sys
 from sklearn.covariance import GraphLassoCV, ledoit_wolf
 
 CLIP_TO_FREQ = False 
-RESAMPLE_FREQ = False
+RESAMPLE_FREQ = True
 
-nfrequencies = 50
-initialfreq = 0.4
-finalfreq = 50.0
+if (len(sys.argv) < 7):
+	print "Usage: python htov.py method /path/to/miniSEED/ nfrequencies f_min f_max prefix"
+	print "Method is 'single taper', 'st, 'cwt2'"
+	exit(0)
 
-runprefix = 'wide1_'
+nfrequencies = int(sys.argv[3])
+initialfreq = float(sys.argv[4])
+finalfreq = float(sys.argv[5])
+
+runprefix = sys.argv[6]
 
 #dr = '/g/data/ha3/Passive/Stavely/'
 dr = '/g/data/ha3/Passive/OvernightData/STAVELY/S06PS/Seismometer_data/S0600/S0600miniSEED/'
@@ -31,7 +37,10 @@ dr = '/g/data/ha3/Passive/OvernightData/STAVELY/S06PS/Seismometer_data/S0600/S06
 #dr = '/g/data/ha3/Passive/OvernightData/Southern_Thompson_2016/Eulo1/EU13/EU13_miniSEED/'
 #dr = '/g/data/ha3/Passive/OvernightData/EUCLA_PASSIVE/GUINEWARRA/GB12/GB12_miniSEED/'
 
-spectra_method='cwt2'
+dr = sys.argv[2]
+
+spectra_method=sys.argv[1]
+#spectra_method='cwt2'
 #spectra_method='st'
 #spectra_method='single taper'
 
@@ -45,19 +54,19 @@ st.merge(method=1,fill_value=0)
 print "stream length = " + str(len(st))
 
 (master_curve, hvsr_freq, error, hvsr_matrix) = batch.create_HVSR(st,spectra_method=spectra_method,
-																  spectra_options={'time_bandwidth':3.5,
-																				   'number_of_tapers':None,
-																				   'quadratic':False,
-                                                                                   'adaptive':True,'nfft':None,
-                                                                                   'taper':'blackman'},
+						  spectra_options={'time_bandwidth':3.5,
+								   'number_of_tapers':None,
+								   'quadratic':False,
+								   'adaptive':True,'nfft':None,
+								   'taper':'blackman'},
                                                                   master_curve_method='mean',cutoff_value=0.0,
-                                                                  window_length=50.0,bin_samples=nfrequencies,
+                                                                  window_length=100.0,bin_samples=nfrequencies,
                                                                   f_min=initialfreq,f_max=finalfreq)
 
 nwindows = len(hvsr_matrix)
 
-lowest_freq = 0.3
-highest_freq = 50.0
+lowest_freq = initialfreq #0.3
+highest_freq = finalfreq #50.0
 def find_nearest_idx(array,value):
 	return (np.abs(array-value)).argmin()
 

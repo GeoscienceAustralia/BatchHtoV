@@ -1,5 +1,5 @@
 from PyQt4 import QtCore
-
+import math
 import numpy as np
 from obspy.core import UTCDateTime
 from scipy.signal.signaltools import detrend
@@ -112,7 +112,7 @@ def getAreasWithinThreshold(c_funct, threshold, min_width, feather=0):
     return np.array(areas)
 
 
-def cwt_TFA(data, delta, nf, f_min=0, f_max=0, w0=8, useMlpy=True):
+def cwt_TFA(data, delta, nf, f_min=0, f_max=0, w0=8, useMlpy=True, freq_spacing='log'):
     """
     :param data: time dependent signal.
     :param delta: time step between two samples in data (in seconds)
@@ -149,6 +149,18 @@ def cwt_TFA(data, delta, nf, f_min=0, f_max=0, w0=8, useMlpy=True):
 
         return cfs, freqs, scales
     else:
+        # spacing option only applies to mlpy
+        if freq_spacing=='linear':
+            oldnf = nf
+            sr = 1.0/delta
+            spacing = sr/wl
+            f_min_idx = math.ceil(f_min / spacing)
+            f_max_idx = math.ceil(f_max / spacing)
+            nf = f_max_idx - f_min_idx + 1
+            f_min = f_min_idx + spacing
+            f_max = f_max_idx + spacing
+            freqs = np.linspace(f_min_idx, f_max_idx, nf) * spacing
+
         # using morlet cwt from mlpy
         npts = data.shape[0]
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #PBS -P vy72 
 #PBS -q express 
-#PBS -l walltime=2:00:00
+#PBS -l walltime=3:00:00
 #PBS -l mem=8GB
 #PBS -l jobfs=1GB
 #PBS -l ncpus=1

@@ -359,7 +359,7 @@ def calculateHVSR(stream, intervals, window_length, method, options,
                         v_spec = np.dot(v_spec, sm_matrix)
                         h1_spec = np.dot(h1_spec, sm_matrix)
                         h2_spec = np.dot(h2_spec, sm_matrix)
-            hv_spec = np.sqrt(h1_spec * h2_spec) / v_spec
+            hv_spec = np.sqrt(0.5 * (h1_spec  +  h2_spec) / v_spec)
             if _i == 0:
                 good_freq = v_freq
             # Store it into the matrix if it has the correct length.
@@ -395,7 +395,7 @@ def calculateHVSR(stream, intervals, window_length, method, options,
             h2_cwt, h2_freq, v_scales = cwt_TFA(h2,
                                     stream[0].stats.delta, good_length, f_min, f_max, useMlpy=False)
             # Convert to spectrum via vertical maxima search
-            h_cwt = np.abs(np.sqrt((h1_cwt ** 2 + h2_cwt ** 2))) # FIXME test 0.5 * inner
+            h_cwt = np.sqrt((np.abs(h1_cwt) ** 2 + np.abs(h2_cwt) ** 2)) # FIXME test 0.5 * inner
             v_cwt = np.abs(v_cwt)
             v_spec = np.ma.array(np.zeros(v_freq.shape[0]),mask=np.ones(v_freq.shape[0]))
             h_spec = np.ma.array(np.zeros(v_freq.shape[0]),mask=np.ones(v_freq.shape[0]))
@@ -467,11 +467,12 @@ def calculateHVSR(stream, intervals, window_length, method, options,
             h2 = stream[h[1]].data[interval[0]: interval[0] + \
                                 window_length]
             # Calculate the spectra.
-            v_cwt, v_freq, v_scales    = cwt_TFA(v,  stream[0].stats.delta, good_length, f_min, f_max)
-            h1_cwt, h1_freq, h1_scales = cwt_TFA(h1, stream[0].stats.delta, good_length, f_min, f_max)
-            h2_cwt, h2_freq, h2_sclaes = cwt_TFA(h2, stream[0].stats.delta, good_length, f_min, f_max)
+            v_cwt, v_freq, v_scales    = cwt_TFA(v,  stream[0].stats.delta, good_length, f_min, f_max, freq_spacing='linear')
+            h1_cwt, h1_freq, h1_scales = cwt_TFA(h1, stream[0].stats.delta, good_length, f_min, f_max, freq_spacing='linear')
+            h2_cwt, h2_freq, h2_sclaes = cwt_TFA(h2, stream[0].stats.delta, good_length, f_min, f_max, freq_spacing='linear')
             # Convert to spectrum via vertical maxima search
-            h_cwt = np.abs(np.sqrt((h1_cwt ** 2 + h2_cwt ** 2))) # FIXME test 0.5 * inner
+            #h_cwt = np.abs(np.sqrt((h1_cwt ** 2 + h2_cwt ** 2))) # FIXME test 0.5 * inner
+            h_cwt = np.sqrt(0.5 * (np.abs(h1_cwt) ** 2 + np.abs(h2_cwt) ** 2)) # FIXME test 0.5 * inner
             v_cwt = np.abs(v_cwt)
             v_spec = np.ma.array(np.zeros(v_freq.shape[0]),mask=np.ones(v_freq.shape[0]))
             h_spec = np.ma.array(np.zeros(v_freq.shape[0]),mask=np.ones(v_freq.shape[0]))
@@ -502,7 +503,8 @@ def calculateHVSR(stream, intervals, window_length, method, options,
                     hmax_pos = h_cwt[findex,e+rayleighDelay]
                     #for now, average it.
                     #h_numer = np.sqrt(hmax_neg**2 + hmax_pos**2) #RMS creates bias
-                    h_numer = 0.5 * (hmax_neg + hmax_pos)
+                    #h_numer = 0.5 * (hmax_neg + hmax_pos)
+                    h_numer = np.maximum(hmax_neg,hmax_pos)
                     v_numer = vmax
                     h_spec[findex] = np.sum(h_numer) / h_numer.shape[0]
                     v_spec[findex] = np.sum(v_numer) / v_numer.shape[0]
@@ -518,6 +520,10 @@ def calculateHVSR(stream, intervals, window_length, method, options,
             hv_spec = h_spec / v_spec
             if _i == 0:
                 good_freq = v_freq
+                good_length = v_freq.shape[0]
+                # Create the matrix that will be used to store the single
+                # spectra.
+                hvsr_matrix = np.empty((length, good_length))
             # Store it into the matrix if it has the correct length.
             hvsr_matrix[num_good_intervals, 0:hv_spec.shape[0]] = hv_spec
             num_good_intervals += 1
