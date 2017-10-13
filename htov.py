@@ -13,9 +13,9 @@ from copy import deepcopy
 from math import ceil
 from mtspec import mtspec, sine_psd
 import numpy as np
-from obspy.core.util import scoreatpercentile as quantile
+from obspy.core.util import score_at_percentile as quantile
 from obspy.signal.filter import highpass, lowpass, bandpass
-from obspy.signal.trigger import zDetect as zdetect
+from obspy.signal.trigger import z_detect as zdetect
 from scipy.signal import resample
 from scipy.interpolate import interp1d
 from scipy.signal import argrelextrema
@@ -467,9 +467,12 @@ def calculateHVSR(stream, intervals, window_length, method, options,
             h2 = stream[h[1]].data[interval[0]: interval[0] + \
                                 window_length]
             # Calculate the spectra.
-            v_cwt, v_freq, v_scales    = cwt_TFA(v,  stream[0].stats.delta, good_length, f_min, f_max, freq_spacing='linear')
-            h1_cwt, h1_freq, h1_scales = cwt_TFA(h1, stream[0].stats.delta, good_length, f_min, f_max, freq_spacing='linear')
-            h2_cwt, h2_freq, h2_sclaes = cwt_TFA(h2, stream[0].stats.delta, good_length, f_min, f_max, freq_spacing='linear')
+            v_cwt, v_freq, v_scales    = cwt_TFA(v,  stream[0].stats.delta, good_length, f_min, f_max,
+                                                 freq_spacing=bin_sampling)
+            h1_cwt, h1_freq, h1_scales = cwt_TFA(h1, stream[0].stats.delta, good_length, f_min, f_max,
+                                                 freq_spacing=bin_sampling)
+            h2_cwt, h2_freq, h2_sclaes = cwt_TFA(h2, stream[0].stats.delta, good_length, f_min, f_max,
+                                                 freq_spacing=bin_sampling)
             # Convert to spectrum via vertical maxima search
             #h_cwt = np.abs(np.sqrt((h1_cwt ** 2 + h2_cwt ** 2))) # FIXME test 0.5 * inner
             h_cwt = np.sqrt(0.5 * (np.abs(h1_cwt) ** 2 + np.abs(h2_cwt) ** 2)) # FIXME test 0.5 * inner
