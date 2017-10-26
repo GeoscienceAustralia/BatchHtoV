@@ -26,6 +26,7 @@ if (len(sys.argv) < 7):
 nfrequencies = int(sys.argv[3])
 initialfreq = float(sys.argv[4])
 finalfreq = float(sys.argv[5])
+windowlength = 120.0
 
 runprefix = sys.argv[6]
 
@@ -38,6 +39,9 @@ dr = '/g/data/ha3/Passive/OvernightData/STAVELY/S06PS/Seismometer_data/S0600/S06
 #dr = '/g/data/ha3/Passive/OvernightData/EUCLA_PASSIVE/GUINEWARRA/GB12/GB12_miniSEED/'
 
 dr = sys.argv[2]
+dr_out = os.path.dirname(os.path.realpath(__file__))+'/'+runprefix+'/';
+if not os.path.exists(dr_out):
+	os.makedirs(dr_out)
 
 spectra_method=sys.argv[1]
 #spectra_method='cwt2'
@@ -58,9 +62,10 @@ print "stream length = " + str(len(st))
 								   'number_of_tapers':None,
 								   'quadratic':False,
 								   'adaptive':True,'nfft':None,
-								   'taper':'blackman'},
+								   #'taper':'blackman'},
+								   'taper':'nuttall'},
                                                                   master_curve_method='mean',cutoff_value=0.0,
-                                                                  window_length=100.0,bin_samples=nfrequencies,
+                                                                  window_length=windowlength,bin_samples=nfrequencies,
                                                                   f_min=initialfreq,f_max=finalfreq)
 
 nwindows = len(hvsr_matrix)
@@ -121,7 +126,7 @@ print error
 diagerr = np.sqrt(np.diag(error))
 lerr = np.exp(np.log(master_curve) - diagerr)
 uerr = np.exp(np.log(master_curve) + diagerr)
-saveprefix = dr+runprefix+(spectra_method.replace(' ','_'))
+saveprefix = dr_out+runprefix+(spectra_method.replace(' ','_'))
 
 np.savetxt(saveprefix+'hv.txt',np.column_stack((hvsr_freq,master_curve, lerr,uerr)))
 np.savetxt(saveprefix+'error.txt',error)

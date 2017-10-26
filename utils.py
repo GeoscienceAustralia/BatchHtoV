@@ -8,6 +8,7 @@ import mlpy.wavelet as wave
 import stockwell.smt as smt
 from scipy import interpolate
 import functools
+import scipy
 
 
 def toQDateTime(dt):
@@ -210,6 +211,10 @@ def single_taper_spectrum(data, delta, taper_name=None):
         taper = np.hanning(length)
     elif 'kaiser' in taper_name:
         taper = np.kaiser(length, beta=14)
+    elif taper_name == 'nuttall':
+        taper = scipy.signal.nuttall(length)
+    elif taper_name == 'tukey':
+        taper = scipy.signal.tukey(length)
     # Should never happen.
     else:
         msg = 'Something went wrong.'
