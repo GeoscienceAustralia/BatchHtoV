@@ -75,6 +75,28 @@ highest_freq = finalfreq #50.0
 def find_nearest_idx(array,value):
 	return (np.abs(array-value)).argmin()
 
+# assumes raw_f is linearly spaced
+def mean_interp(raw_f,int_f,y):
+	# bin bounds for int_f
+	spacing = raw_f[1]-raw_f[0] # assumes linear spacing
+	ni = int_f.shape[0]
+	bint_f = np.zeros(ni+1)
+	bint_f[1:ni] = 0.5 * (int_f[1:ni]+int_f[0:ni-1])
+	bint_f[0] = bint_f[1] - (bint_f[2] - bint_f[1])
+	bint_f[ni] = bint_f[ni-1] + (bint_f[ni-1] - bint_f[ni-2]) # the end bins are not correctly sized, but this will do.
+	#ind_f = np.digitize(raw_f,bint_f)
+	#ind_count = np.bincount(ind_f)
+	# using indices in ind_f
+	ycs = np.cumsum(y)
+	# y is a function of raw_f. Using the bin boundaries, iterpolate
+	# the cumsum(y) at these bin boundaries and use this to integrate y over the bin.
+	ycsint = interp1d(raw_f, ycs)
+	rsycs = ycsint(bint_f)
+	rsy = rsycs[1:] - rsycs[:-1] # integrate via cumsum @ upper bin boundary - cumsum @ lower bin boundary
+	rsy /= (bint_f[1:] - bint_f[:-1])/spacing
+	# resampled y
+	return rsy
+
 if RESAMPLE_FREQ:
 	# generate frequencies vector
 	logfreq = np.zeros(nfrequencies)
@@ -85,8 +107,11 @@ if RESAMPLE_FREQ:
 	print "Number of windows computed = " + str(nwindows)
 	interp_hvsr_matrix = np.empty((nwindows, nfrequencies))
 	for i in xrange(nwindows):
-		nint = interp1d(hvsr_freq, hvsr_matrix[i,:])
-		hv_spec2 = nint(logfreq)
+		# interp spectrum without rebinning and averaging
+		#nint = interp1d(hvsr_freq, hvsr_matrix[i,:])
+		#hv_spec2 = nint(logfreq)
+		# rebin and average to reduce error in wide bins
+		hv_spec2 = mean_interp(hvsr_freq,logfreq,hvsr_matrix[i,:])
 		interp_hvsr_matrix[i,:] = hv_spec2
 	hvsr_freq = logfreq
 else:
