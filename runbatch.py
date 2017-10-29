@@ -14,6 +14,7 @@ import calendar
 import math
 import sys
 from sklearn.covariance import GraphLassoCV, ledoit_wolf
+import numpy.ma as ma
 
 CLIP_TO_FREQ = False 
 RESAMPLE_FREQ = True
@@ -94,8 +95,17 @@ def mean_interp(raw_f,int_f,y):
 	rsycs = ycsint(bint_f)
 	rsy = rsycs[1:] - rsycs[:-1] # integrate via cumsum @ upper bin boundary - cumsum @ lower bin boundary
 	rsy /= (bint_f[1:] - bint_f[:-1])/spacing
+	#
+	# compute the variance
+	y2 = ma.empty((len(bint_f)-1,len(y)))
+	y2.data[...] = y
+	#y2.mask = bint_f[:-1,np.newaxis] <= np.digitize(raw_f,bint_f)-1 < bint_f[1:,np.newaxis]
+	y2.mask = np.digitize(raw_f,bint_f)-1 != np.arange(ni)[:,np.newaxis]
+	#y2.mask = bint_f[:-1,np.newaxis] <= raw_f < bint_f[1:,np.newaxis]
+	rsyvar = y2.var(axis=1).filled(0.001)
 	# resampled y
-	return rsy
+	return (rsy,rsyvar)
+
 
 if RESAMPLE_FREQ:
 	# generate frequencies vector
@@ -106,27 +116,33 @@ if RESAMPLE_FREQ:
 	# interpolate to log spacing
 	print "Number of windows computed = " + str(nwindows)
 	interp_hvsr_matrix = np.empty((nwindows, nfrequencies))
+	interp_hvsr_matrix_var = np.empty((nwindows, nfrequencies))
 	for i in xrange(nwindows):
 		# interp spectrum without rebinning and averaging
 		#nint = interp1d(hvsr_freq, hvsr_matrix[i,:])
 		#hv_spec2 = nint(logfreq)
 		# rebin and average to reduce error in wide bins
-		hv_spec2 = mean_interp(hvsr_freq,logfreq,hvsr_matrix[i,:])
+		(hv_spec2, hv_spec2_var) = mean_interp(hvsr_freq,logfreq,hvsr_matrix[i,:])
 		interp_hvsr_matrix[i,:] = hv_spec2
+		interp_hvsr_matrix_var[i,:] = hv_spec2_var
 	hvsr_freq = logfreq
+	master_curve_binvar = interp_hvsr_matrix_var.mean(axis=0) / float(nwindows**2)
 else:
 	interp_hvsr_matrix = hvsr_matrix
 	nfrequencies = hvsr_freq.shape[0]
 	initialfreq = hvsr_freq[0]
 	finalfreq = hvsr_freq[nfrequencies-1]
-#master_curve = interp_hvsr_matrix.mean(axis=0)
-master_curve = np.median(interp_hvsr_matrix,axis=0)
+	# for non-resample case
+	master_curve_binvar = np.zeros(hvsr_freq.shape[0])
+
+master_curve = interp_hvsr_matrix.mean(axis=0)
+#master_curve = np.median(interp_hvsr_matrix,axis=0)
 std = (np.log1p(interp_hvsr_matrix[:][:]) - np.log1p(master_curve))
 errormag = np.zeros(nwindows)
 for i in xrange(nwindows):	
 	errormag[i] = np.dot(std[i,:],std[i,:].T)
-error = np.dot(std.T,std)
-error /= float(nwindows-1)
+error = np.dot(std.T,std) / float(nwindows-1) + np.diag(master_curve_binvar)
+#error /= float(nwindows-1)
 
 sp_model = GraphLassoCV()
 sp_model.fit(std)
