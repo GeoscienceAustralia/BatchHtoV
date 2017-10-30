@@ -76,6 +76,45 @@ highest_freq = finalfreq #50.0
 def find_nearest_idx(array,value):
 	return (np.abs(array-value)).argmin()
 
+
+# assumes raw_f is linearly spaced
+def mean_maxmin_interp(raw_f,int_f,y):
+	# bin bounds for int_f
+	spacing = raw_f[1]-raw_f[0] # assumes linear spacing
+	ni = int_f.shape[0]
+	bint_f = np.zeros(ni+1)
+	bint_f[1:ni] = 0.5 * (int_f[1:ni]+int_f[0:ni-1])
+	bint_f[0] = bint_f[1] - (bint_f[2] - bint_f[1])
+	bint_f[ni] = bint_f[ni-1] + (bint_f[ni-1] - bint_f[ni-2]) # the end bins are not correctly sized, but this will do.
+	#ind_f = np.digitize(raw_f,bint_f)
+	#ind_count = np.bincount(ind_f)
+	# using indices in ind_f
+	ycs = np.cumsum(y)
+	# y is a function of raw_f. Using the bin boundaries, iterpolate
+	# the cumsum(y) at these bin boundaries and use this to integrate y over the bin.
+	ycsint = interp1d(raw_f, ycs)
+	rsycs = ycsint(bint_f)
+	rsy = rsycs[1:] - rsycs[:-1] # integrate via cumsum @ upper bin boundary - cumsum @ lower bin boundary
+	rsy /= (bint_f[1:] - bint_f[:-1])/spacing
+	#
+	# compute the variance
+	y2 = ma.empty((len(bint_f)-1,len(y)))
+	y2.data[...] = np.log(y)
+	#y2.mask = bint_f[:-1,np.newaxis] <= np.digitize(raw_f,bint_f)-1 < bint_f[1:,np.newaxis]
+	y2.mask = np.digitize(raw_f,bint_f)-1 != np.arange(ni)[:,np.newaxis]
+	#y2.mask = bint_f[:-1,np.newaxis] <= raw_f < bint_f[1:,np.newaxis]
+	yint = interp1d(raw_f, np.log(y))
+	bin_yint = yint(bint_f)
+	bcf = np.bincount(np.digitize(raw_f,bint_f))[1:-1] # clip off first element because digitize will always bin less than the first boundary into bin 0.
+	min_bin_yint = np.minimum(bin_yint[1:],bin_yint[:-1])
+	max_bin_yint = np.maximum(bin_yint[1:],bin_yint[:-1])
+	rsymax = np.exp(np.maximum(y2.max(axis=1).filled(0),max_bin_yint))
+	rsymin = np.exp(np.minimum(y2.min(axis=1).filled(99999),min_bin_yint))
+	rsyvar = (y2.var(axis=1).filled(0) * bcf + bin_yint[1:] + bin_yint[:-1]) / (bcf + 1.0) # unbiased estimate: subtract 1 from denom when ddof=0 for np.var()
+	# resampled y
+	return (rsy,rsyvar,rsymin,rsymax)
+
+
 # assumes raw_f is linearly spaced
 def mean_interp(raw_f,int_f,y):
 	# bin bounds for int_f
@@ -122,32 +161,33 @@ if RESAMPLE_FREQ:
 		#nint = interp1d(hvsr_freq, hvsr_matrix[i,:])
 		#hv_spec2 = nint(logfreq)
 		# rebin and average to reduce error in wide bins
-		(hv_spec2, hv_spec2_var) = mean_interp(hvsr_freq,logfreq,hvsr_matrix[i,:])
+		(hv_spec2, hv_spec2_var, hvs_min, hvs_max) = mean_maxmin_interp(hvsr_freq,logfreq,hvsr_matrix[i,:])
 		interp_hvsr_matrix[i,:] = hv_spec2
 		interp_hvsr_matrix_var[i,:] = hv_spec2_var
 	hvsr_freq = logfreq
-	master_curve_binvar = interp_hvsr_matrix_var.mean(axis=0) / float(nwindows**2)
+	master_curve_binlogvar = interp_hvsr_matrix_var.mean(axis=0) / float(nwindows**2)
 else:
 	interp_hvsr_matrix = hvsr_matrix
 	nfrequencies = hvsr_freq.shape[0]
 	initialfreq = hvsr_freq[0]
 	finalfreq = hvsr_freq[nfrequencies-1]
 	# for non-resample case
-	master_curve_binvar = np.zeros(hvsr_freq.shape[0])
+	master_curve_binlogvar = np.zeros(hvsr_freq.shape[0])
 
 master_curve = interp_hvsr_matrix.mean(axis=0)
 #master_curve = np.median(interp_hvsr_matrix,axis=0)
-std = (np.log1p(interp_hvsr_matrix[:][:]) - np.log1p(master_curve))
+std = (np.log(interp_hvsr_matrix[:][:]) - np.log(master_curve))
 errormag = np.zeros(nwindows)
 for i in xrange(nwindows):	
 	errormag[i] = np.dot(std[i,:],std[i,:].T)
-error = np.dot(std.T,std) / float(nwindows-1) + np.diag(master_curve_binvar)
+error = np.dot(std.T,std) / float(nwindows-1) # + np.diag(master_curve_binlogvar)
 #error /= float(nwindows-1)
 
 sp_model = GraphLassoCV()
 sp_model.fit(std)
-sp_cov = sp_model.covariance_
-sp_prec = sp_model.precision_
+sp_cov = sp_model.covariance_# + np.diag(master_curve_binlogvar)
+sp_prec = sp_model.precision_# + 1.0/np.diag(master_curve_binlogvar)
+
 
 
 if CLIP_TO_FREQ:
@@ -164,7 +204,8 @@ print hvsr_freq
 print "Error shape: " + str(error.shape)
 print error
 
-diagerr = np.sqrt(np.diag(error))
+#diagerr = np.sqrt(np.diag(error))
+diagerr = std.var(axis=0) + master_curve_binlogvar
 lerr = np.exp(np.log(master_curve) - diagerr)
 uerr = np.exp(np.log(master_curve) + diagerr)
 saveprefix = dr_out+runprefix+(spectra_method.replace(' ','_'))
