@@ -362,6 +362,10 @@ def calculateHVSR(stream, intervals, window_length, method, options,
             hv_spec = np.sqrt(0.5 * (h1_spec  +  h2_spec) / v_spec)
             if _i == 0:
                 good_freq = v_freq
+                good_length = v_freq.shape[0]
+                # Create the matrix that will be used to store the single
+                # spectra.
+                hvsr_matrix = np.empty((length, good_length))
             # Store it into the matrix if it has the correct length.
             hvsr_matrix[_i, :] = hv_spec
         # Cut the hvsr matrix.

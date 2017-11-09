@@ -155,7 +155,7 @@ def cwt_TFA(data, delta, nf, f_min=0, f_max=0, w0=8, useMlpy=True, freq_spacing=
             oldnf = nf
             sr = 1.0/delta
             spacing = sr/wl
-            f_min_idx = math.ceil(f_min / spacing)
+            f_min_idx = math.floor(f_min / spacing)
             f_max_idx = math.ceil(f_max / spacing)
             nf = f_max_idx - f_min_idx + 1
             f_min = f_min_idx + spacing
@@ -188,16 +188,27 @@ def st_TFA(data, delta, nf, f_min=0, f_max=0):
     return cfs[indices, :], freqsOut
 #end func
 
-def single_taper_spectrum(data, delta, taper_name=None):
+def single_taper_spectrum(data_in, delta_in, taper_name=None):
     """
     Returns the spectrum and the corresponding frequencies for data with the
     given taper.
     """
-    length = len(data)
-    good_length = length // 2 + 1
+    length = len(data_in)
+    # zero-pad to nearest power of 2
+    zpadlen = int(2 ** math.ceil(math.log(length,2)))
+    # Detrend the data.
+    #data = detrend(data)
+    data = np.zeros(zpadlen)
+    data[:length] = detrend(data_in)
+    #good_length = length // 2 + 1
+    good_length = zpadlen // 2 + 1
+    # compute delta from delta_in and length
+    #delta = delta_in * length / zpadlen
+    delta = delta_in
     # Create the frequencies.
     # XXX: This might be some kind of hack
-    freq = abs(np.fft.fftfreq(length, delta)[:good_length])
+    #freq = abs(np.fft.fftfreq(length, delta)[:good_length])
+    freq = abs(np.fft.fftfreq(zpadlen, delta)[:good_length])
     # Create the tapers.
     if taper_name == 'bartlett':
         taper = np.bartlett(length)
@@ -219,9 +230,7 @@ def single_taper_spectrum(data, delta, taper_name=None):
     else:
         msg = 'Something went wrong.'
         raise Exception(msg)
-    # Detrend the data.
-    data = detrend(data)
     # Apply the taper.
-    data *= taper
+    data[:length] *= taper
     spec = abs(np.fft.rfft(data)) ** 2
     return spec, freq

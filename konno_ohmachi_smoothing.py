@@ -97,6 +97,15 @@ def calculate_smoothing_matrix(frequencies, bandwidth):
                                                           bandwidth)
     return sm_matrix
 
+def calculate_smoothing_matrix_linlog(logfreq,linfreq,bandwidth):
+    sm_matrix = np.empty((len(logfreq), len(linfreq)), 'float32')
+    linfreq = np.require(linfreq, 'float32')
+    for _i, freq in enumerate(logfreq):
+        sm_matrix[_i,:] = konno_ohmachi_smoothing_window(linfreq, freq,
+                                                          bandwidth)
+    return sm_matrix
+
+
 
 def smooth_spectra(spectra, frequencies, bandwidth, count=1):
     """

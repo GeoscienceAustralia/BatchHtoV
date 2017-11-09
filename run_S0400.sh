@@ -12,4 +12,5 @@
 export PATH=/g/data/ha3/lsd547/miniconda2/bin:$PATH
 export PYTHONPATH=/g/data/ha3/lsd547/miniconda2/:/g/data/ha3/lsd547/mlpy/lib/python2.7/site-packages/:/g/data/ha3/lsd547/stockwell_transform/lib/python2.7/site-packages/
 source activate seismicpy27
-python runbatch.py 'single taper' '/g/data/ha3/Passive/OvernightData/STAVELY/S04PS/Seismometer_data/S0400/S0400miniSEED/' 100 0.5 20.0 S0400_fft3
+#python runkobatch.py 'single taper' '/g/data/ha3/Passive/OvernightData/STAVELY/S04PS/Seismometer_data/S0400/S0400miniSEED/' 70 0.3 32.0 S0400_fft10
+python runkobatch.py 'cwt2' '/g/data/ha3/Passive/OvernightData/STAVELY/S04PS/Seismometer_data/S0400/S0400miniSEED/' 70 0.3 32.0 S0400_fft11
