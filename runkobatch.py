@@ -17,7 +17,7 @@ from sklearn.covariance import GraphLassoCV, ledoit_wolf
 import numpy.ma as ma
 from konno_ohmachi_smoothing import calculate_smoothing_matrix_linlog 
 
-CLIP_TO_FREQ = False 
+CLIP_TO_FREQ = False
 RESAMPLE_FREQ = True
 
 if (len(sys.argv) < 7):
@@ -151,15 +151,21 @@ def mean_interp(raw_f,int_f,y):
 
 if RESAMPLE_FREQ:
 	# generate frequencies vector
-	logfreq = np.zeros(nfrequencies)
+	logfreq_extended = np.zeros(nfrequencies+2)
 	c = (1.0/(nfrequencies-1))*np.log10(finalfreq/initialfreq)
-	for i in xrange(nfrequencies):
-		logfreq[i] = initialfreq*(10.0 ** (c*i))
+	for i in xrange(nfrequencies+2):
+		logfreq_extended[i] = initialfreq*(10.0 ** (c*(i-1)))
+	logfreq = logfreq_extended[1:-1]
 	# interpolate to log spacing
 	print "Number of windows computed = " + str(nwindows)
 	interp_hvsr_matrix = np.empty((nwindows, nfrequencies))
 	interp_hvsr_matrix_var = np.empty((nwindows, nfrequencies))
 	sm_matrix = calculate_smoothing_matrix_linlog(logfreq,hvsr_freq,40)
+	sm_matrix_log = calculate_smoothing_matrix(logfreq,40)
+	deltalin = hvsr_freq[1]-hvsr_freq[0]
+	deltalogb = 0.5 * (logfreq_extended[1:] + logfreq_extended[:-1])
+	deltalog = deltalogb[1:] - deltalogb[:-1] # same dimensions as logfreq
+	resample_bias = np.dot(sm_matrix_log,deltalog) / deltalin
 	for i in xrange(nwindows):
 		# interp spectrum without rebinning and averaging
 		#nint = interp1d(hvsr_freq, hvsr_matrix[i,:])
@@ -184,6 +190,7 @@ else:
 	finalfreq = hvsr_freq[nfrequencies-1]
 	# for non-resample case
 	master_curve_binlogvar = np.zeros(hvsr_freq.shape[0])
+	resample_bias = np.ones(nfrequencies)
 
 #master_curve = interp_hvsr_matrix.mean(axis=0)
 master_curve = np.exp(np.log(interp_hvsr_matrix).mean(axis=0))
@@ -217,11 +224,13 @@ print "Error shape: " + str(error.shape)
 print error
 
 #diagerr = np.sqrt(np.diag(error))
-diagerr = np.sqrt(std.var(axis=0) + master_curve_binlogvar)
+#diagerr = np.sqrt(std.var(axis=0) + master_curve_binlogvar)
+diagerr = np.sqrt(std.var(axis=0)*resample_bias)
 lerr = np.exp(np.log(master_curve) - diagerr)
 uerr = np.exp(np.log(master_curve) + diagerr)
 saveprefix = dr_out+runprefix+(spectra_method.replace(' ','_'))
 
+np.savetxt(saveprefix+'resample_bias.txt',resample_bias)
 np.savetxt(saveprefix+'hv.txt',np.column_stack((hvsr_freq,master_curve, lerr,uerr)))
 np.savetxt(saveprefix+'error.txt',error)
 np.savetxt(saveprefix+'inverror.txt',np.linalg.inv(error))
