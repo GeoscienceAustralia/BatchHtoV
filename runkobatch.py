@@ -166,6 +166,8 @@ if RESAMPLE_FREQ:
 	deltalogb = 0.5 * (logfreq_extended[1:] + logfreq_extended[:-1])
 	deltalog = deltalogb[1:] - deltalogb[:-1] # same dimensions as logfreq
 	resample_bias = np.dot(sm_matrix_log,deltalog) / deltalin
+	# scale resample bias so that minimum is 1.0.
+	resample_bias /= resample_bias.min()
 	for i in xrange(nwindows):
 		# interp spectrum without rebinning and averaging
 		#nint = interp1d(hvsr_freq, hvsr_matrix[i,:])
