@@ -51,9 +51,12 @@ spectra_method=sys.argv[1]
 #spectra_method='single taper'
 
 st = Stream()
-for f in sorted(glob.glob(dr+'*.EH*')):
-	print "Loading " + f
-	st += read(f)
+if dr[-1]=='/':
+	for f in sorted(glob.glob(dr+'*.EH*')):
+		print "Loading " + f
+		st += read(f)
+else:
+	st += read(dr)
 
 st.merge(method=1,fill_value=0)
 #st = st.slice(st[0].stats.starttime, st[0].stats.starttime+28800)
