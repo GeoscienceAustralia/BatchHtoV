@@ -19,6 +19,7 @@ from konno_ohmachi_smoothing import calculate_smoothing_matrix_linlog
 
 CLIP_TO_FREQ = False
 RESAMPLE_FREQ = True
+APPLY_RESAMPLE_BIAS = False
 
 if (len(sys.argv) < 7):
 	print "Usage: python htov.py method /path/to/miniSEED/ nfrequencies f_min f_max prefix"
@@ -28,7 +29,7 @@ if (len(sys.argv) < 7):
 nfrequencies = int(sys.argv[3])
 initialfreq = float(sys.argv[4])
 finalfreq = float(sys.argv[5])
-windowlength = 120.0
+windowlength = 30.0
 
 runprefix = sys.argv[6]
 
@@ -171,6 +172,7 @@ if RESAMPLE_FREQ:
 	resample_bias = np.dot(sm_matrix_log,deltalog) / deltalin
 	# scale resample bias so that minimum is 1.0.
 	resample_bias /= resample_bias.min()
+	print "Max freq = " + str(hvsr_freq[-1])
 	for i in xrange(nwindows):
 		# interp spectrum without rebinning and averaging
 		#nint = interp1d(hvsr_freq, hvsr_matrix[i,:])
@@ -230,7 +232,10 @@ print error
 
 #diagerr = np.sqrt(np.diag(error))
 #diagerr = np.sqrt(std.var(axis=0) + master_curve_binlogvar)
-diagerr = np.sqrt(std.var(axis=0)*resample_bias)
+if APPLY_RESAMPLE_BIAS:
+	diagerr = np.sqrt(std.var(axis=0)*resample_bias)
+else:
+	diagerr = np.sqrt(std.var(axis=0))
 lerr = np.exp(np.log(master_curve) - diagerr)
 uerr = np.exp(np.log(master_curve) + diagerr)
 saveprefix = dr_out+runprefix+(spectra_method.replace(' ','_'))
