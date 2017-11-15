@@ -20,6 +20,7 @@ from konno_ohmachi_smoothing import calculate_smoothing_matrix_linlog
 CLIP_TO_FREQ = False
 RESAMPLE_FREQ = True
 APPLY_RESAMPLE_BIAS = False
+APPLY_SMOOTHING_VARIANCE = True
 
 if (len(sys.argv) < 7):
 	print "Usage: python htov.py method /path/to/miniSEED/ nfrequencies f_min f_max prefix"
@@ -29,7 +30,7 @@ if (len(sys.argv) < 7):
 nfrequencies = int(sys.argv[3])
 initialfreq = float(sys.argv[4])
 finalfreq = float(sys.argv[5])
-windowlength = 30.0
+windowlength = 20.0
 
 runprefix = sys.argv[6]
 
@@ -152,6 +153,10 @@ def mean_interp(raw_f,int_f,y):
 	# resampled y
 	return (rsy,rsyvar)
 
+#master_curve = interp_hvsr_matrix.mean(axis=0)
+master_curve_full = np.exp(np.log(hvsr_matrix).mean(axis=0))
+#master_curve = np.median(interp_hvsr_matrix,axis=0)
+std_full = (np.log(hvsr_matrix[:][:]) - np.log(master_curve))
 
 if RESAMPLE_FREQ:
 	# generate frequencies vector
@@ -169,6 +174,7 @@ if RESAMPLE_FREQ:
 	deltalin = hvsr_freq[1]-hvsr_freq[0]
 	deltalogb = 0.5 * (logfreq_extended[1:] + logfreq_extended[:-1])
 	deltalog = deltalogb[1:] - deltalogb[:-1] # same dimensions as logfreq
+	# compute resample bias as ratio of lin to log transformation
 	resample_bias = np.dot(sm_matrix_log,deltalog) / deltalin
 	# scale resample bias so that minimum is 1.0.
 	resample_bias /= resample_bias.min()
@@ -190,6 +196,11 @@ if RESAMPLE_FREQ:
 	hvsr_freq = logfreq
 	#master_curve_binlogvar = interp_hvsr_matrix_var.mean(axis=0) / float(nwindows**2)
 	master_curve_binlogvar = (interp_hvsr_matrix_var).sum(axis=0) / float(nwindows**2)
+	smoothing_variance_operator = sm_matrix ** 2
+	master_curve = np.exp(np.dot(sm_matrix,np.log(master_curve_full)))
+	diagerr = np.sqrt(std_full.var(axis=0,ddof=1))
+	diagerr = np.sqrt(np.dot(smoothing_variance_operator,diagerr**2))
+	std = (np.log(interp_hvsr_matrix[:][:]) - np.log(master_curve))
 else:
 	interp_hvsr_matrix = hvsr_matrix
 	nfrequencies = hvsr_freq.shape[0]
@@ -198,11 +209,11 @@ else:
 	# for non-resample case
 	master_curve_binlogvar = np.zeros(hvsr_freq.shape[0])
 	resample_bias = np.ones(nfrequencies)
+	master_curve = master_curve_full
+	std = std_full
+	diagerr = np.sqrt(std.var(axis=0))
 
-#master_curve = interp_hvsr_matrix.mean(axis=0)
-master_curve = np.exp(np.log(interp_hvsr_matrix).mean(axis=0))
-#master_curve = np.median(interp_hvsr_matrix,axis=0)
-std = (np.log(interp_hvsr_matrix[:][:]) - np.log(master_curve))
+
 errormag = np.zeros(nwindows)
 for i in xrange(nwindows):	
 	errormag[i] = np.dot(std[i,:],std[i,:].T)
@@ -232,10 +243,6 @@ print error
 
 #diagerr = np.sqrt(np.diag(error))
 #diagerr = np.sqrt(std.var(axis=0) + master_curve_binlogvar)
-if APPLY_RESAMPLE_BIAS:
-	diagerr = np.sqrt(std.var(axis=0)*resample_bias)
-else:
-	diagerr = np.sqrt(std.var(axis=0))
 lerr = np.exp(np.log(master_curve) - diagerr)
 uerr = np.exp(np.log(master_curve) + diagerr)
 saveprefix = dr_out+runprefix+(spectra_method.replace(' ','_'))
