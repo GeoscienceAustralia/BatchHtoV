@@ -1,4 +1,3 @@
-import batch
 from htov import *
 import glob, os
 import obspy
