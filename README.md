@@ -12,3 +12,11 @@ This utility has been extended to implement HVTFA using CWT and Stockwell transf
 
 [mlpy v3.5]:http://mlpy.sourceforge.net/
 [GSL]:https://www.gnu.org/software/gsl/
+
+## Installation
+
+### Raijin
+
+* Download `mlpy`
+* `module load gsl/1.15`
+* `pip install --global-option=build_ext --global-option="-I/apps/gsl/1.15/include/" --global-option="-L/apps/gsl/1.15/lib/" mlpy-3.5.0.tar.gz --user`
