@@ -1,31 +1,12 @@
-from PyQt4 import QtCore
 import math
 import numpy as np
 from obspy.core import UTCDateTime
 from scipy.signal.signaltools import detrend
 from obspy.signal.tf_misfit import cwt
 import mlpy.wavelet as wave
-import stockwell.smt as smt
+import st
 from scipy import interpolate
 import functools
-
-
-def toQDateTime(dt):
-    """
-    Converts a UTCDateTime object to a QDateTime object.
-    """
-    # Microseconds will get lost because QDateTime does not support them.
-    return QtCore.QDateTime(dt.year, dt.month, dt.day, dt.hour, dt.minute,
-                            dt.second, int(dt.microsecond / 1000.0),
-                            QtCore.Qt.TimeSpec(1))
-
-
-def fromQDateTime(dt):
-    """
-    Converts a QDateTime to a UTCDateTime object.
-    """
-    # XXX: Microseconds might be lost.
-    return UTCDateTime(dt.toPyDateTime())
 
 
 def getIntervalsInAreas(areas, min_interval=None):
@@ -172,7 +153,7 @@ def cwt_TFA(data, delta, nf, f_min=0, f_max=0, w0=8, useMlpy=True, freq_spacing=
 # end func
 
 def st_TFA(data, delta, nf, f_min=0, f_max=0):
-    cfs = smt.st(data)
+    cfs = st.st(data)
     npts = int(data.shape[0])
 
     # function that maps frequencies to indices

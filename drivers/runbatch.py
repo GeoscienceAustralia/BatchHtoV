@@ -1,4 +1,4 @@
-from htov import *
+from htov import batch
 import glob, os
 import obspy
 from obspy.core import Stream, UTCDateTime
