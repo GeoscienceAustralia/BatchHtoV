@@ -157,8 +157,7 @@ def cwt_TFA(data, delta, nf, f_min=0, f_max=0, w0=8, useMlpy=True, freq_spacing=
             f_min_idx = math.ceil(f_min / spacing)
             f_max_idx = math.ceil(f_max / spacing)
             nf = f_max_idx - f_min_idx + 1
-            f_min = f_min_idx + spacing
-            f_max = f_max_idx + spacing
+
             freqs = np.linspace(f_min_idx, f_max_idx, nf) * spacing
 
         # using morlet cwt from mlpy

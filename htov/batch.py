@@ -139,7 +139,8 @@ def create_HVSR(filename, vertical_channel=None, spectra_method='multitaper',
     intervals, _, _ = getQuietIntervals(charNoiseFunctions, thresholds,
                                         window_length, npts)
     if not len(intervals):
-        return False
+        print('Warning: No quiet intervals found. Aborting..')
+        return None, None, None, None
     hvsr_matrix, hvsr_freq, length, master_curve, error = \
             calculateHVSR(stream, intervals, window_length, spectra_method,
                           spectra_options, master_curve_method, cutoff_value,
