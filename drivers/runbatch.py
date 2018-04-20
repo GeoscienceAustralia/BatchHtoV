@@ -97,19 +97,11 @@ def process(spec_method, data_path, output_path, win_length,
     dr              = data_path
     runprefix       = output_prefix
 
-    # dr = '/g/data/ha3/Passive/Stavely/'
-    # dr = '/g/data/ha3/Passive/OvernightData/STAVELY/S06PS/Seismometer_data/S0600/S0600miniSEED/'
-    # dr = 'data/S0600miniSEED/'
-    # dr = '/g/data/ha3/Passive/OvernightData/Southern_Thompson_2016/AdventureWay1/aw05/AW05_miniSEED/'
-    # dr = '/g/data/ha3/Passive/OvernightData/Southern_Thompson_2016/Overshot1/OV04/OV04_miniSEED/'
-    # dr = '/g/data/ha3/Passive/OvernightData/Southern_Thompson_2016/Eulo1/EU13/EU13_miniSEED/'
-    # dr = '/g/data/ha3/Passive/OvernightData/EUCLA_PASSIVE/GUINEWARRA/GB12/GB12_miniSEED/'
-
     spectra_method  = spec_method
     RESAMPLE_FREQ   = resample_log_freq
     CLIP_TO_FREQ    = clip_freq
-    lowest_freq     = clip_fmin  # 0.3
-    highest_freq    = clip_fmax  # 50.0
+    lowest_freq     = clip_fmin
+    highest_freq    = clip_fmax
 
     st = Stream()
     for f in sorted(glob.glob(dr + '/*.EH*')):
@@ -143,28 +135,7 @@ def process(spec_method, data_path, output_path, win_length,
         return (np.abs(array - value)).argmin()
 
 
-    interp_hvsr_matrix = None
-    if RESAMPLE_FREQ:
-        # generate frequencies vector
-        logfreq = np.zeros(nfrequencies)
-        c = (1.0 / (nfrequencies - 1)) * np.log10(finalfreq / initialfreq)
-        for i in xrange(nfrequencies):
-            logfreq[i] = initialfreq * (10.0 ** (c * i))
-        # interpolate to log spacing
-        print "Number of windows computed = " + str(nwindows)
-        interp_hvsr_matrix = np.empty((nwindows, nfrequencies))
-        for i in xrange(nwindows):
-            nint = interp1d(hvsr_freq, hvsr_matrix[i, :])
-            hv_spec2 = nint(logfreq)
-            interp_hvsr_matrix[i, :] = hv_spec2
-        hvsr_freq = logfreq
-    else:
-        interp_hvsr_matrix = hvsr_matrix
-    #end if
-
-    # master_curve = interp_hvsr_matrix.mean(axis=0)
-    master_curve = np.median(interp_hvsr_matrix, axis=0)
-    std = (np.log1p(interp_hvsr_matrix[:][:]) - np.log1p(master_curve))
+    std = (np.log1p(hvsr_matrix[:][:]) - np.log1p(master_curve))
     errormag = np.zeros(nwindows)
     for i in xrange(nwindows):
         errormag[i] = np.dot(std[i, :], std[i, :].T)
@@ -213,7 +184,6 @@ def process(spec_method, data_path, output_path, win_length,
     print "Log determinant of sparse error matrix: " + str(logdetsperr)
     np.savetxt(saveprefix + '.logdetsperror.txt', np.array(logdetsperr))
 
-    # f,((a1,a2,a3),(cba1,cba2,cba3)) = plt.subplots(2,3,figsize=(18,6))
     f = plt.figure(figsize=(18, 6))
     gs = gridspec.GridSpec(4, 4, height_ratios=[40, 1, 40, 1])
     a1 = plt.subplot(gs[:, 0])
@@ -243,8 +213,6 @@ def process(spec_method, data_path, output_path, win_length,
     a4 = plt.subplot(gs[:, 3])
     a4.hist(errormag, 50)
 
-    # plt.show()
-    # plt.show()
     plt.savefig(saveprefix + '.figure.png')
 # end func
 

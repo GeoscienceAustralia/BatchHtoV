@@ -21,7 +21,8 @@ def create_HVSR(filename, vertical_channel=None, spectra_method='multitaper',
                 highpass_value=None, new_sample_rate=None, zerophase=False,
                 corners=4, starttime=None, endtime=None, threshold=0.95,
                 window_length=25, cutoff_value=0.1, zdetector_window_length=40,
-                message_function=None,bin_samples=100, bin_sampling='log',f_min=0.1,f_max=50.0):
+                message_function=None,bin_samples=100, bin_sampling='log',
+                f_min=0.1,f_max=50.0, resample_freq=False):
     """
     Single function that takes lot of parameters and creates an HVSR spectrum.
 
@@ -148,5 +149,6 @@ def create_HVSR(filename, vertical_channel=None, spectra_method='multitaper',
                           message_function=message_function,
                           bin_samples=bin_samples,
                           bin_sampling=bin_sampling,
-                          f_min=f_min,f_max=f_max)
+                          f_min=f_min,f_max=f_max,
+                          resample_freq=resample_freq)
     return master_curve, hvsr_freq, error, hvsr_matrix
