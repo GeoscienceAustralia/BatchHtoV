@@ -38,6 +38,9 @@ CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
               help="Sampling method for frequency bins")
 @click.option('--resample-log-freq', is_flag=True,
               help="Resample frequency bins in log-space. Only applicable if --freq-sampling is 'linear' and --spec-method is 'cwt2")
+@click.option('--smooth-spectra-method', default='konno-ohmachi',
+              type=click.Choice(['konno-ohmachi', 'none']),
+              help="Smooth spectra using the Konno & Ohmachi method; 'none' to skip smoothing")
 @click.option('--clip-fmin', default=0.3,
               help="Minimum clip frequency for master HVSR-curve. Only applicable if --clip-freq is given")
 @click.option('--clip-fmax', default=50.,
@@ -49,8 +52,8 @@ CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
               help="Method for computing master HVSR curve")
 @click.option('--output-prefix', default='', help="Prefix for output file names")
 def process(spec_method, data_path, output_path, win_length,
-            zdetect_win_length, zdetect_threshold,
-            nfreq, fmin, fmax, freq_sampling, resample_log_freq,
+            zdetect_win_length, zdetect_threshold, nfreq, fmin,
+            fmax, freq_sampling, resample_log_freq, smooth_spectra_method,
             clip_fmin, clip_fmax, clip_freq, master_curve_method,
             output_prefix):
     """
@@ -60,22 +63,23 @@ def process(spec_method, data_path, output_path, win_length,
     """
 
     print('\n=== RunBatch Parameters ===\n')
-    print('Spec. Method:        %s' % spec_method)
-    print('Data-path:           %s' % data_path)
-    print('Output-path:         %s' % output_path)
-    print('Win. Length:         %d (seconds)' % win_length)
-    print('Zdetect Win. Length: %d (samples)' % zdetect_win_length)
-    print('Zdetect threshold:   %d' % zdetect_threshold)
-    print('nfreq:               %d' % nfreq)
-    print('fmin:                %f' % fmin)
-    print('fmax:                %f' % fmax)
-    print('freq_sampling:       %s' % freq_sampling)
-    print('resample_log_freq:   %d' % resample_log_freq)
-    print('clip_freq:           %d' % clip_freq)
+    print('Spec. Method:            %s' % spec_method)
+    print('Data-path:               %s' % data_path)
+    print('Output-path:             %s' % output_path)
+    print('Win. Length:             %d (seconds)' % win_length)
+    print('Zdetect Win. Length:     %d (samples)' % zdetect_win_length)
+    print('Zdetect threshold:       %d' % zdetect_threshold)
+    print('nfreq:                   %d' % nfreq)
+    print('fmin:                    %f' % fmin)
+    print('fmax:                    %f' % fmax)
+    print('freq_sampling:           %s' % freq_sampling)
+    print('resample_log_freq:       %d' % resample_log_freq)
+    print('smooth_spectra_method:   %s' % smooth_spectra_method)
+    print('clip_freq:               %d' % clip_freq)
     if(clip_freq):
-        print('\tclip_fmin:   %d' % clip_fmin)
-        print('\tclip_fmax:   %d' % clip_fmax)
-    print('Output-prefix:       %s' % output_prefix)
+        print('\tclip_fmin:         %d' % clip_fmin)
+        print('\tclip_fmax:         %d' % clip_fmax)
+    print('Output-prefix:           %s' % output_prefix)
     print('\n===========================\n')
 
     # Removing '-' in options which are meant to avoid having to pass
@@ -83,6 +87,8 @@ def process(spec_method, data_path, output_path, win_length,
     if (spec_method == 'single-taper'): spec_method = 'single taper'
     if (master_curve_method == 'geometric-average'):
         master_curve_method = 'geometric average'
+
+    if(smooth_spectra_method=='none'): smooth_spectra_method = None
 
     # Check input consistency
     if((resample_log_freq and spec_method != 'cwt2') or
@@ -98,7 +104,6 @@ def process(spec_method, data_path, output_path, win_length,
     runprefix       = output_prefix
 
     spectra_method  = spec_method
-    RESAMPLE_FREQ   = resample_log_freq
     CLIP_TO_FREQ    = clip_freq
     lowest_freq     = clip_fmin
     highest_freq    = clip_fmax
@@ -113,20 +118,23 @@ def process(spec_method, data_path, output_path, win_length,
     st = st.slice(st[0].stats.starttime, st[0].stats.starttime+3600)
     print "stream length = " + str(len(st))
 
-    (master_curve, hvsr_freq, error, hvsr_matrix) = batch.create_HVSR(st, spectra_method=spectra_method,
-                                                                      spectra_options={'time_bandwidth': 3.5,
-                                                                                       'number_of_tapers': None,
-                                                                                       'quadratic': False,
-                                                                                       'adaptive': True, 'nfft': None,
-                                                                                       'taper': 'blackman'},
-                                                                      master_curve_method=master_curve_method,
-                                                                      cutoff_value=0.0,
-                                                                      window_length=win_length,
-                                                                      bin_samples=nfrequencies,
-                                                                      bin_sampling=freq_sampling,
-                                                                      f_min=initialfreq, f_max=finalfreq,
-                                                                      zdetector_window_length=zdetect_win_length,
-                                                                      threshold=zdetect_threshold)
+    (master_curve, hvsr_freq,
+     error, hvsr_matrix) = batch.create_HVSR( st, spectra_method=spectra_method,
+                                              spectra_options={'time_bandwidth': 3.5,
+                                                               'number_of_tapers': None,
+                                                               'quadratic': False,
+                                                               'adaptive': True, 'nfft': None,
+                                                               'taper': 'blackman'},
+                                              master_curve_method=master_curve_method,
+                                              cutoff_value=0.0,
+                                              window_length=win_length,
+                                              bin_samples=nfrequencies,
+                                              bin_sampling=freq_sampling,
+                                              f_min=initialfreq, f_max=finalfreq,
+                                              zdetector_window_length=zdetect_win_length,
+                                              resample_log_freq=resample_log_freq,
+                                              smoothing=smooth_spectra_method,
+                                              threshold=zdetect_threshold )
     if(master_curve is None): sys.exit('Failed to process data.')
 
     nwindows = len(hvsr_matrix)
@@ -142,6 +150,7 @@ def process(spec_method, data_path, output_path, win_length,
     error = np.dot(std.T, std)
     error /= float(nwindows - 1)
 
+    print "Computing model covariance"
     sp_model = GraphLassoCV()
     sp_model.fit(std)
     sp_cov = sp_model.covariance_

@@ -213,11 +213,12 @@ def calculateHVSR(stream, intervals, window_length, method, options,
                   master_method, cutoff_value, smoothing=None,
                   smoothing_count=1, smoothing_constant=40,
                   message_function=None, bin_samples=100, bin_sampling='log',
-                  f_min=0.1,f_max=50.0, resample_freq=False):
+                  f_min=0.1,f_max=50.0, resample_log_freq=False):
     """
     Calculates the HVSR curve.
     """
     # Some arithmetics.
+    #intervals = intervals[0:3]
     length = len(intervals)
     good_length = window_length // 2 + 1
     # The stream that will be used.
@@ -609,14 +610,14 @@ def calculateHVSR(stream, intervals, window_length, method, options,
     # end if
 
     # Resample frequencies
-    if(bin_sampling=='linear' and resample_freq):
+    if(bin_sampling=='linear' and resample_log_freq):
         # generate frequencies vector
         logfreq = np.zeros(bin_samples)
         c = (1.0 / (bin_samples - 1)) * np.log10(f_max / f_min)
         for i in xrange(bin_samples):
             logfreq[i] = f_min * (10.0 ** (c * i))
         # interpolate to log spacing
-        print "Number of windows computed = " + str(nwindows)
+
         interp_hvsr_matrix = np.empty((length, bin_samples))
         for i in xrange(length):
             nint = interp1d(good_freq, hvsr_matrix[i, :])
