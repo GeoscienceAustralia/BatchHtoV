@@ -30,9 +30,9 @@ if (len(sys.argv) < 7):
 nfrequencies = int(sys.argv[3])
 initialfreq = float(sys.argv[4])
 finalfreq = float(sys.argv[5])
-windowlength = 15.0
+windowlength = float(sys.argv[6])
 
-runprefix = sys.argv[6]
+runprefix = sys.argv[7]
 
 #dr = '/g/data/ha3/Passive/Stavely/'
 dr = '/g/data/ha3/Passive/OvernightData/STAVELY/S06PS/Seismometer_data/S0600/S0600miniSEED/'
@@ -63,6 +63,7 @@ else:
 
 st.merge(method=1,fill_value=0)
 #st = st.slice(st[0].stats.starttime, st[0].stats.starttime+28800)
+print st
 print "stream length = " + str(len(st))
 
 (master_curve, hvsr_freq, error, hvsr_matrix) = batch.create_HVSR(st,spectra_method=spectra_method,
@@ -166,6 +167,8 @@ if RESAMPLE_FREQ:
 	for i in xrange(nfrequencies+2):
 		logfreq_extended[i] = initialfreq*(10.0 ** (c*(i-1)))
 	logfreq = logfreq_extended[1:-1]
+	print "Logarithmically interpolated frequency bins"
+	print logfreq
 	# interpolate to log spacing
 	print "Number of windows computed = " + str(nwindows)
 	interp_hvsr_matrix = np.empty((nwindows, nfrequencies))
@@ -221,10 +224,10 @@ for i in xrange(nwindows):
 error = np.dot(std.T,std) / float(nwindows-1) # + np.diag(master_curve_binlogvar)
 #error /= float(nwindows-1)
 
-sp_model = GraphLassoCV()
-sp_model.fit(std)
-sp_cov = sp_model.covariance_# + np.diag(master_curve_binlogvar)
-sp_prec = sp_model.precision_# + 1.0/np.diag(master_curve_binlogvar)
+#sp_model = GraphLassoCV()
+#sp_model.fit(std)
+#sp_cov = sp_model.covariance_# + np.diag(master_curve_binlogvar)
+#sp_prec = sp_model.precision_# + 1.0/np.diag(master_curve_binlogvar)
 
 
 
@@ -257,11 +260,11 @@ print "Log determinant of error matrix: " + str(logdeterr)
 np.savetxt(saveprefix+'logdeterror.txt',np.array(logdeterr))
 
 # sparse equivalent
-np.savetxt(saveprefix+'sperror.txt',sp_cov)
-np.savetxt(saveprefix+'invsperror.txt',sp_prec)
-logdetsperr = np.linalg.slogdet(sp_cov)
-print "Log determinant of sparse error matrix: " + str(logdetsperr)
-np.savetxt(saveprefix+'logdetsperror.txt',np.array(logdetsperr))
+#np.savetxt(saveprefix+'sperror.txt',sp_cov)
+#np.savetxt(saveprefix+'invsperror.txt',sp_prec)
+#logdetsperr = np.linalg.slogdet(sp_cov)
+#print "Log determinant of sparse error matrix: " + str(logdetsperr)
+#np.savetxt(saveprefix+'logdetsperror.txt',np.array(logdetsperr))
 
 #f,((a1,a2,a3),(cba1,cba2,cba3)) = plt.subplots(2,3,figsize=(18,6))
 f = plt.figure(figsize=(18,6))
@@ -281,14 +284,14 @@ ca3 = a3.imshow(np.linalg.inv(error),interpolation='nearest')
 cba3 = plt.subplot(gs[1,2])
 cbar3 = f.colorbar(ca3,cax=cba3,orientation='horizontal')
 #sparse
-a22 = plt.subplot(gs[2,1])
-ca22 = a22.imshow(sp_cov,interpolation='nearest')
-cba22 = plt.subplot(gs[3,1])
-cbar22 = f.colorbar(ca22,cax=cba22,orientation='horizontal')
-a23 = plt.subplot(gs[2,2])
-ca23 = a23.imshow(sp_prec,interpolation='nearest')
-cba23 = plt.subplot(gs[3,2])
-cbar23 = f.colorbar(ca23,cax=cba23,orientation='horizontal')
+#a22 = plt.subplot(gs[2,1])
+#ca22 = a22.imshow(sp_cov,interpolation='nearest')
+#cba22 = plt.subplot(gs[3,1])
+#cbar22 = f.colorbar(ca22,cax=cba22,orientation='horizontal')
+#a23 = plt.subplot(gs[2,2])
+#ca23 = a23.imshow(sp_prec,interpolation='nearest')
+#cba23 = plt.subplot(gs[3,2])
+#cbar23 = f.colorbar(ca23,cax=cba23,orientation='horizontal')
 
 
 a4 = plt.subplot(gs[:,3])

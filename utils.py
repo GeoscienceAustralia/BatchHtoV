@@ -1,4 +1,4 @@
-from PyQt4 import QtCore
+#from PyQt4 import QtCore
 import math
 import numpy as np
 from obspy.core import UTCDateTime

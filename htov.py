@@ -13,14 +13,16 @@ from copy import deepcopy
 from math import ceil
 from mtspec import mtspec, sine_psd
 import numpy as np
-from obspy.core.util import scoreatpercentile as quantile
+#from obspy.core.util import scoreatpercentile as quantile
+from scipy.stats import scoreatpercentile as quantile
 from obspy.signal.filter import highpass, lowpass, bandpass
-from obspy.signal.trigger import zDetect as zdetect
+#from obspy.signal.trigger import zDetect as zdetect
+from obspy.signal.trigger import z_detect as zdetect
 from scipy.signal import resample
 from scipy.interpolate import interp1d
 from scipy.signal import argrelextrema
 
-import pywt
+#import pywt
 import mlpy.wavelet as wave
 
 from utils import *
