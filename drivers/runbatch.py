@@ -1,11 +1,12 @@
 from htov import batch
-import glob, os
+import glob, os, sys
 import obspy
 from obspy.core import Stream, UTCDateTime
 from obspy import read
+import pyasdf
 import numpy as np
 import matplotlib
-
+from collections import defaultdict
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib import gridspec
@@ -16,15 +17,86 @@ import sys
 import click
 from sklearn.covariance import GraphLassoCV, ledoit_wolf
 
-CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
+class StreamAdapter(object):
+    def __init__(self, data_path):
+        assert os.path.exists(data_path), 'Invalid path'
 
+        self._data_path = data_path
+        self._stations = []
+        self._files_dict = defaultdict(list)
+
+        if(os.path.isdir(data_path)):
+            # harvest miniseed files
+            self._input_type = 'mseed'
+
+            files = glob.glob(data_path + '/*.*N')
+            files += glob.glob(data_path + '/*.*E')
+            files += glob.glob(data_path + '/*.*Z')
+
+            if(len(files) % 3): raise NameError('Mismatch in component file-count detected..')
+
+            # extract station names
+            for f in files:
+                try:
+                    s = read(f)
+                    self._files_dict[s.traces[0].stats.station].append(f)
+                    self._stations.append(s.traces[0].stats.station)
+                except:
+                    raise NameError('Error reading file :%s'%(f))
+                # end try
+            # end for
+            self._stations = list(set(self._stations))
+        else:
+            self._input_type = 'asdf'
+
+            ds = None
+            try:
+                ds = pyasdf.ASDFDataSet(self._data_path, mode='r')
+            except:
+                raise NameError('Error reading file : %s'%(self._data_path))
+            # end try
+
+            self._stations = list(set([x.split('.')[1] for x in ds.waveforms.list()]))
+        # end if
+    # end func
+
+    def getStationNames(self):
+        return self._stations
+    # end func
+
+    def getStream(self, station_name, start_time, end_time):
+        if(station_name not in self._stations): raise NameError('Error: station-name not found.')
+
+        if (type(start_time)!=UTCDateTime): raise NameError('start_time must be of type UTCDateTime')
+        if (type(end_time) != UTCDateTime): raise NameError('end_time must be of type UTCDateTime')
+
+        st = None
+        if(self._input_type == 'mseed'):
+            st = Stream()
+
+            for f in self._files_dict[station_name]:
+                cst = read(f)
+                st += cst.slice(start_time, end_time)
+            # end for
+        elif(self._input_type=='asdf'):
+            ds = pyasdf.ASDFDataSet(self._data_path, mode='r')
+            st = ds.get_waveforms("*", station_name, "*", '*', start_time, end_time, '*')
+        # end if
+
+        # merge filling gaps
+        st.merge(method=1, fill_value=0)
+        return st
+    # end func
+# end class
+
+CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 
 @click.command(context_settings=CONTEXT_SETTINGS)
 @click.argument('spec-method',
                 required=True,
                 type=click.Choice(['single-taper', 'st', 'cwt2']))
 @click.argument('data-path',
-                type=click.Path(exists=True))
+                type= click.Path(exists=True) or click.File('r'))
 @click.argument('output-path', required=True,
                 type=click.Path(exists=True))
 @click.option('--win-length', default=100, help="Window length in seconds")
@@ -33,7 +105,7 @@ CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 @click.option('--nfreq', default=50, help="Number of frequency bins")
 @click.option('--fmin', default=0.4, help="Minimum frequency")
 @click.option('--fmax', default=50., help="Minimum frequency")
-@click.option('--freq-sampling', default='linear',
+@click.option('--freq-sampling', default='log',
               type=click.Choice(['linear', 'log']),
               help="Sampling method for frequency bins")
 @click.option('--resample-log-freq', is_flag=True,
@@ -50,7 +122,9 @@ CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 @click.option('--master-curve-method', default='mean',
               type=click.Choice(['mean', 'median', 'geometric-average']),
               help="Method for computing master HVSR curve")
-@click.option('--output-prefix', default='', help="Prefix for output file names")
+@click.option('--output-prefix', default='$station_name.$spec_method',
+              type=str,
+              help="Prefix for output file names; default is composed of station name and spectra method")
 def process(spec_method, data_path, output_path, win_length,
             zdetect_win_length, zdetect_threshold, nfreq, fmin,
             fmax, freq_sampling, resample_log_freq, smooth_spectra_method,
@@ -101,22 +175,16 @@ def process(spec_method, data_path, output_path, win_length,
     initialfreq     = fmin
     finalfreq       = fmax
     dr              = data_path
-    runprefix       = output_prefix
 
     spectra_method  = spec_method
     CLIP_TO_FREQ    = clip_freq
     lowest_freq     = clip_fmin
     highest_freq    = clip_fmax
 
-    st = Stream()
-    for f in sorted(glob.glob(dr + '/*.EH*')):
-        print "Loading " + f
-        st += read(f)
-    #end for
-
-    st.merge(method=1, fill_value=0)
-    st = st.slice(st[0].stats.starttime, st[0].stats.starttime+3600)
-    print "stream length = " + str(len(st))
+    sa = StreamAdapter(data_path)
+    stations = sa.getStationNames()
+    st = sa.getStream(stations[0], UTCDateTime("1915-01-01T00:00:00"),
+                      UTCDateTime("2021-04-09T00:00:00"))
 
     (master_curve, hvsr_freq,
      error, hvsr_matrix) = batch.create_HVSR( st, spectra_method=spectra_method,
@@ -176,7 +244,7 @@ def process(spec_method, data_path, output_path, win_length,
     uerr = np.exp(np.log(master_curve) + diagerr)
 
     tag = ''
-    if(runprefix!=''): tag = runprefix+'.'
+    if(output_prefix=='$station_name.$spec_method'): tag = ''
     saveprefix = os.path.join(output_path, tag + (spectra_method.replace(' ', '_')))
 
     np.savetxt(saveprefix + '.hv.txt', np.column_stack((hvsr_freq, master_curve, lerr, uerr)))
