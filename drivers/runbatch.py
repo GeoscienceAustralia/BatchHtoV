@@ -99,12 +99,12 @@ CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
                 type= click.Path(exists=True) or click.File('r'))
 @click.argument('output-path', required=True,
                 type=click.Path(exists=True))
-@click.option('--win-length', default=100, help="Window length in seconds")
+@click.option('--win-length', default=200, help="Window length in seconds")
 @click.option('--zdetect-win-length', default=40, help="Zdetect window length in samples")
 @click.option('--zdetect-threshold', default=0.95, help="Threshold, as a percentile, for the characteristic function to find quiet areas")
 @click.option('--nfreq', default=50, help="Number of frequency bins")
-@click.option('--fmin', default=0.4, help="Minimum frequency")
-@click.option('--fmax', default=50., help="Minimum frequency")
+@click.option('--fmin', default=0.1, help="Minimum frequency")
+@click.option('--fmax', default=40., help="Minimum frequency")
 @click.option('--freq-sampling', default='log',
               type=click.Choice(['linear', 'log']),
               help="Sampling method for frequency bins")
@@ -125,11 +125,17 @@ CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 @click.option('--output-prefix', default='$station_name.$spec_method',
               type=str,
               help="Prefix for output file names; default is composed of station name and spectra method")
+@click.option('--start-time', default='1900-01-01T00:00:00',
+              type=str,
+              help="Date and time (in UTC format) to start from; default is year 1900.")
+@click.option('--end-time', default='2100-01-01T00:00:00',
+              type=str,
+              help="Date and time (in UTC format) to stop at; default is year 2100.")
 def process(spec_method, data_path, output_path, win_length,
             zdetect_win_length, zdetect_threshold, nfreq, fmin,
             fmax, freq_sampling, resample_log_freq, smooth_spectra_method,
             clip_fmin, clip_fmax, clip_freq, master_curve_method,
-            output_prefix):
+            output_prefix, start_time, end_time):
     """
     SPEC_METHOD: Method for computing spectra; ['single-taper', 'st', 'cwt2']. \n
     DATA_PATH: Path to miniseed files \n
@@ -154,6 +160,8 @@ def process(spec_method, data_path, output_path, win_length,
         print('\tclip_fmin:         %d' % clip_fmin)
         print('\tclip_fmax:         %d' % clip_fmax)
     print('Output-prefix:           %s' % output_prefix)
+    print('Start date and time:     %s' % start_time)
+    print('End date and time:       %s' % end_time)
     print('\n===========================\n')
 
     # Removing '-' in options which are meant to avoid having to pass
@@ -171,6 +179,14 @@ def process(spec_method, data_path, output_path, win_length,
         sys.exit(msg)
     #end if
 
+    # Get start and end times
+    try:
+        start_time = UTCDateTime(start_time)
+        end_time = UTCDateTime(end_time)
+    except:
+        raise NameError('Failed to convert start or end time to UTCDateTime')
+    # end try
+
     nfrequencies    = nfreq
     initialfreq     = fmin
     finalfreq       = fmax
@@ -183,114 +199,145 @@ def process(spec_method, data_path, output_path, win_length,
 
     sa = StreamAdapter(data_path)
     stations = sa.getStationNames()
-    st = sa.getStream(stations[0], UTCDateTime("1915-01-01T00:00:00"),
-                      UTCDateTime("2021-04-09T00:00:00"))
 
-    (master_curve, hvsr_freq,
-     error, hvsr_matrix) = batch.create_HVSR( st, spectra_method=spectra_method,
-                                              spectra_options={'time_bandwidth': 3.5,
-                                                               'number_of_tapers': None,
-                                                               'quadratic': False,
-                                                               'adaptive': True, 'nfft': None,
-                                                               'taper': 'blackman'},
-                                              master_curve_method=master_curve_method,
-                                              cutoff_value=0.0,
-                                              window_length=win_length,
-                                              bin_samples=nfrequencies,
-                                              bin_sampling=freq_sampling,
-                                              f_min=initialfreq, f_max=finalfreq,
-                                              zdetector_window_length=zdetect_win_length,
-                                              resample_log_freq=resample_log_freq,
-                                              smoothing=smooth_spectra_method,
-                                              threshold=zdetect_threshold )
-    if(master_curve is None): sys.exit('Failed to process data.')
+    for station in stations:
 
-    nwindows = len(hvsr_matrix)
+        st = sa.getStream(stations[0], start_time=start_time, end_time=end_time)
 
-    def find_nearest_idx(array, value):
-        return (np.abs(array - value)).argmin()
+        if(not len(st)): continue # no data found
+
+        (master_curve, hvsr_freq,
+         error, hvsr_matrix) = batch.create_HVSR( st, spectra_method=spectra_method,
+                                                  spectra_options={'time_bandwidth': 3.5,
+                                                                   'number_of_tapers': None,
+                                                                   'quadratic': False,
+                                                                   'adaptive': True, 'nfft': None,
+                                                                   'taper': 'blackman'},
+                                                  master_curve_method=master_curve_method,
+                                                  cutoff_value=0.0,
+                                                  window_length=win_length,
+                                                  bin_samples=nfrequencies,
+                                                  bin_sampling=freq_sampling,
+                                                  f_min=initialfreq, f_max=finalfreq,
+                                                  zdetector_window_length=zdetect_win_length,
+                                                  resample_log_freq=resample_log_freq,
+                                                  smoothing=smooth_spectra_method,
+                                                  threshold=zdetect_threshold )
+        if(master_curve is None): sys.exit('Failed to process data.')
+
+        nwindows = len(hvsr_matrix)
+
+        def find_nearest_idx(array, value):
+            return (np.abs(array - value)).argmin()
 
 
-    std = (np.log1p(hvsr_matrix[:][:]) - np.log1p(master_curve))
-    errormag = np.zeros(nwindows)
-    for i in xrange(nwindows):
-        errormag[i] = np.dot(std[i, :], std[i, :].T)
-    error = np.dot(std.T, std)
-    error /= float(nwindows - 1)
+        std = (np.log1p(hvsr_matrix[:][:]) - np.log1p(master_curve))
+        errormag = np.zeros(nwindows)
+        for i in xrange(nwindows):
+            errormag[i] = np.dot(std[i, :], std[i, :].T)
+        error = np.dot(std.T, std)
+        error /= float(nwindows - 1)
 
-    print "Computing model covariance"
-    sp_model = GraphLassoCV()
-    sp_model.fit(std)
-    sp_cov = sp_model.covariance_
-    sp_prec = sp_model.precision_
+        print "Computing sparse model covariance"
+        sp_model = GraphLassoCV()
+        sp_model.fit(std)
+        sp_cov = sp_model.covariance_
+        sp_prec = sp_model.precision_
 
-    if CLIP_TO_FREQ:
-        lclip = find_nearest_idx(hvsr_freq, lowest_freq)
-        uclip = find_nearest_idx(hvsr_freq, highest_freq)
-        master_curve = master_curve[lclip:uclip]
-        hvsr_freq = hvsr_freq[lclip:uclip]
-        error = error[lclip:uclip, lclip:uclip]
-    #end if
+        if CLIP_TO_FREQ:
+            lclip = find_nearest_idx(hvsr_freq, lowest_freq)
+            uclip = find_nearest_idx(hvsr_freq, highest_freq)
+            master_curve = master_curve[lclip:uclip]
+            hvsr_freq = hvsr_freq[lclip:uclip]
+            error = error[lclip:uclip, lclip:uclip]
+        #end if
 
-    print "Master curve shape: " + str(master_curve.shape)
-    print master_curve
-    print "Frequencies shape: " + str(hvsr_freq.shape)
-    print hvsr_freq
-    print "Error shape: " + str(error.shape)
-    print error
+        print "Master curve shape: " + str(master_curve.shape)
+        print master_curve
+        print "Frequencies shape: " + str(hvsr_freq.shape)
+        print hvsr_freq
+        print "Error shape: " + str(error.shape)
+        print error
 
-    diagerr = np.sqrt(np.diag(error))
-    lerr = np.exp(np.log(master_curve) - diagerr)
-    uerr = np.exp(np.log(master_curve) + diagerr)
+        diagerr = np.sqrt(np.diag(error))
+        lerr = np.exp(np.log(master_curve) - diagerr)
+        uerr = np.exp(np.log(master_curve) + diagerr)
 
-    tag = ''
-    if(output_prefix=='$station_name.$spec_method'): tag = ''
-    saveprefix = os.path.join(output_path, tag + (spectra_method.replace(' ', '_')))
+        # set output prefix
+        tag = ''
+        if(output_prefix=='$station_name.$spec_method'):
+            tag = '%s.%s'%(station, spectra_method.replace(' ', '_'))
+        else:
+            tag = output_prefix
+        # end if
+        saveprefix = os.path.join(output_path, tag)
 
-    np.savetxt(saveprefix + '.hv.txt', np.column_stack((hvsr_freq, master_curve, lerr, uerr)))
-    np.savetxt(saveprefix + '.error.txt', error)
-    np.savetxt(saveprefix + '.inverror.txt', np.linalg.inv(error))
-    logdeterr = np.linalg.slogdet(error)
-    print "Log determinant of error matrix: " + str(logdeterr)
-    np.savetxt(saveprefix + '.logdeterror.txt', np.array(logdeterr))
+        np.savetxt(saveprefix + '.hv.txt', np.column_stack((hvsr_freq, master_curve, lerr, uerr)))
+        np.savetxt(saveprefix + '.error.txt', error)
+        np.savetxt(saveprefix + '.inverror.txt', np.linalg.inv(error))
+        logdeterr = np.linalg.slogdet(error)
+        print "Log determinant of error matrix: " + str(logdeterr)
+        np.savetxt(saveprefix + '.logdeterror.txt', np.array(logdeterr))
 
-    # sparse equivalent
-    np.savetxt(saveprefix + '.sperror.txt', sp_cov)
-    np.savetxt(saveprefix + '.invsperror.txt', sp_prec)
-    logdetsperr = np.linalg.slogdet(sp_cov)
-    print "Log determinant of sparse error matrix: " + str(logdetsperr)
-    np.savetxt(saveprefix + '.logdetsperror.txt', np.array(logdetsperr))
+        # sparse equivalent
+        np.savetxt(saveprefix + '.sperror.txt', sp_cov)
+        np.savetxt(saveprefix + '.invsperror.txt', sp_prec)
+        logdetsperr = np.linalg.slogdet(sp_cov)
+        print "Log determinant of sparse error matrix: " + str(logdetsperr)
+        np.savetxt(saveprefix + '.logdetsperror.txt', np.array(logdetsperr))
 
-    f = plt.figure(figsize=(18, 6))
-    gs = gridspec.GridSpec(4, 4, height_ratios=[40, 1, 40, 1])
-    a1 = plt.subplot(gs[:, 0])
-    a1.plot(hvsr_freq, master_curve, 'r')
-    a1.plot(hvsr_freq, lerr, ':g')
-    a1.plot(hvsr_freq, uerr, ':b')
-    a1.set_yscale('log')
-    a1.set_xscale('log')
-    a2 = plt.subplot(gs[0, 1])
-    ca2 = a2.imshow(error, interpolation='nearest')
-    cba2 = plt.subplot(gs[1, 1])
-    cbar2 = f.colorbar(ca2, cax=cba2, orientation='horizontal')
-    a3 = plt.subplot(gs[0, 2])
-    ca3 = a3.imshow(np.linalg.inv(error), interpolation='nearest')
-    cba3 = plt.subplot(gs[1, 2])
-    cbar3 = f.colorbar(ca3, cax=cba3, orientation='horizontal')
-    # sparse
-    a22 = plt.subplot(gs[2, 1])
-    ca22 = a22.imshow(sp_cov, interpolation='nearest')
-    cba22 = plt.subplot(gs[3, 1])
-    cbar22 = f.colorbar(ca22, cax=cba22, orientation='horizontal')
-    a23 = plt.subplot(gs[2, 2])
-    ca23 = a23.imshow(sp_prec, interpolation='nearest')
-    cba23 = plt.subplot(gs[3, 2])
-    cbar23 = f.colorbar(ca23, cax=cba23, orientation='horizontal')
+        f = plt.figure(figsize=(18, 6))
+        gs = gridspec.GridSpec(4, 4, height_ratios=[40, 2, 40, 2])
 
-    a4 = plt.subplot(gs[:, 3])
-    a4.hist(errormag, 50)
+        # Plot master curves and +/- 1 sigma
+        a1 = plt.subplot(gs[:, 0])
+        a1.plot(hvsr_freq, master_curve, 'r', lw=2)
+        a1.plot(hvsr_freq, lerr, 'g', lw=0.5)
+        a1.plot(hvsr_freq, uerr, 'b', lw=0.5)
+        a1.set_yscale('log')
+        a1.set_xscale('log')
+        a1.grid(which='major', linestyle='-', linewidth='0.5', color='k')
+        a1.grid(which='minor', linestyle=':', linewidth='0.5', color='grey')
 
-    plt.savefig(saveprefix + '.figure.png')
+        # Plot covariance
+        a2 = plt.subplot(gs[0, 1])
+        ca2 = a2.imshow(error, interpolation='nearest')
+        cba2 = plt.subplot(gs[1, 1])
+        cbar2 = f.colorbar(ca2, cax=cba2, orientation='horizontal')
+        cbar2.ax.tick_params(labelsize=7)
+        a2.title.set_text('Covariance Matrix')
+
+        # Plot inverse of covariance
+        a3 = plt.subplot(gs[0, 2])
+        ca3 = a3.imshow(np.linalg.inv(error), interpolation='nearest')
+        cba3 = plt.subplot(gs[1, 2])
+        cbar3 = f.colorbar(ca3, cax=cba3, orientation='horizontal')
+        cbar3.ax.tick_params(labelsize=7)
+        a3.title.set_text('Inverse of covariance Matrix')
+
+        # Plot sparse covariance
+        a22 = plt.subplot(gs[2, 1])
+        ca22 = a22.imshow(sp_cov, interpolation='nearest')
+        cba22 = plt.subplot(gs[3, 1])
+        cbar22 = f.colorbar(ca22, cax=cba22, orientation='horizontal')
+        cbar22.ax.tick_params(labelsize=7)
+        a22.title.set_text('Sparse covariance Matrix')
+
+        # Plot inverse of sparse covariance (precision)
+        a23 = plt.subplot(gs[2, 2])
+        ca23 = a23.imshow(sp_prec, interpolation='nearest')
+        cba23 = plt.subplot(gs[3, 2])
+        cbar23 = f.colorbar(ca23, cax=cba23, orientation='horizontal')
+        cbar23.ax.tick_params(labelsize=7)
+        a23.title.set_text('Precision Matrix')
+
+        # Plot histogram
+        a4 = plt.subplot(gs[:, 3])
+        a4.hist(errormag, 50)
+
+        plt.tight_layout()
+        plt.savefig(saveprefix + '.figure.png')
+    # end for
 # end func
 
 if (__name__ == '__main__'):
