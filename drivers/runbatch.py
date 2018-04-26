@@ -1,4 +1,5 @@
 from htov import batch
+from mpi4py import MPI
 import glob, os, sys
 import obspy
 from obspy.core import Stream, UTCDateTime
@@ -151,27 +152,34 @@ def process(spec_method, data_path, output_path, win_length,
     OUTPUT_PATH: Output folder \n
     """
 
-    print('\n=== RunBatch Parameters ===\n')
-    print('Spec. Method:            %s' % spec_method)
-    print('Data-path:               %s' % data_path)
-    print('Output-path:             %s' % output_path)
-    print('Win. Length:             %d (seconds)' % win_length)
-    print('Zdetect Win. Length:     %d (samples)' % zdetect_win_length)
-    print('Zdetect threshold:       %d' % zdetect_threshold)
-    print('nfreq:                   %d' % nfreq)
-    print('fmin:                    %f' % fmin)
-    print('fmax:                    %f' % fmax)
-    print('freq_sampling:           %s' % freq_sampling)
-    print('resample_log_freq:       %d' % resample_log_freq)
-    print('smooth_spectra_method:   %s' % smooth_spectra_method)
-    print('clip_freq:               %d' % clip_freq)
-    if(clip_freq):
-        print('\tclip_fmin:         %d' % clip_fmin)
-        print('\tclip_fmax:         %d' % clip_fmax)
-    print('Output-prefix:           %s' % output_prefix)
-    print('Start date and time:     %s' % start_time)
-    print('End date and time:       %s' % end_time)
-    print('\n===========================\n')
+    comm = MPI.COMM_WORLD
+    nproc = comm.Get_size()
+    rank = comm.Get_rank()
+    proc_stations = defaultdict(list)
+
+    if(rank == 0):
+        print('\n=== RunBatch Parameters ===\n')
+        print('Spec. Method:            %s' % spec_method)
+        print('Data-path:               %s' % data_path)
+        print('Output-path:             %s' % output_path)
+        print('Win. Length:             %d (seconds)' % win_length)
+        print('Zdetect Win. Length:     %d (samples)' % zdetect_win_length)
+        print('Zdetect threshold:       %d' % zdetect_threshold)
+        print('nfreq:                   %d' % nfreq)
+        print('fmin:                    %f' % fmin)
+        print('fmax:                    %f' % fmax)
+        print('freq_sampling:           %s' % freq_sampling)
+        print('resample_log_freq:       %d' % resample_log_freq)
+        print('smooth_spectra_method:   %s' % smooth_spectra_method)
+        print('clip_freq:               %d' % clip_freq)
+        if(clip_freq):
+            print('\tclip_fmin:         %d' % clip_fmin)
+            print('\tclip_fmax:         %d' % clip_fmax)
+        print('Output-prefix:           %s' % output_prefix)
+        print('Start date and time:     %s' % start_time)
+        print('End date and time:       %s' % end_time)
+        print('\n===========================\n')
+    # end if
 
     # Removing '-' in options which are meant to avoid having to pass
     # a quoted string at the commandline
@@ -209,12 +217,28 @@ def process(spec_method, data_path, output_path, win_length,
     sa = StreamAdapter(data_path, buffer_size_in_mb=read_buffer_mb)
     stations = sa.getStationNames()
 
-    print ""
-    print 'Stations Found:'
-    print stations
-    print ""
+    if(rank == 0):
+        print ""
+        print 'Stations Found:'
+        print stations
+        print ""
 
-    for station in stations:
+        count = 0
+        for iproc in np.arange(nproc):
+            for istation in np.arange(np.divide(len(stations), nproc)):
+                proc_stations[iproc].append(stations[count])
+                count += 1
+        # end for
+        for iproc in np.arange(np.mod(len(stations), nproc)):
+            proc_stations[iproc].append(stations[count])
+            count += 1
+        # end for
+    # end if
+
+    # broadcast workload to all procs
+    proc_stations = comm.bcast(proc_stations, root=0)
+
+    for station in proc_stations[rank]:
         print '\nProcessing station %s..\n'%(station)
 
         st = sa.getStream(station, start_time=start_time, end_time=end_time)
