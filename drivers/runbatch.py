@@ -125,6 +125,8 @@ CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 @click.option('--output-prefix', default='$station_name.$spec_method',
               type=str,
               help="Prefix for output file names; default is composed of station name and spectra method")
+@click.option('--compute-sparse-covariance', is_flag=True,
+              help="Compute sparse covariance")
 @click.option('--start-time', default='1900-01-01T00:00:00',
               type=str,
               help="Date and time (in UTC format) to start from; default is year 1900.")
@@ -135,7 +137,7 @@ def process(spec_method, data_path, output_path, win_length,
             zdetect_win_length, zdetect_threshold, nfreq, fmin,
             fmax, freq_sampling, resample_log_freq, smooth_spectra_method,
             clip_fmin, clip_fmax, clip_freq, master_curve_method,
-            output_prefix, start_time, end_time):
+            output_prefix, compute_sparse_covariance, start_time, end_time):
     """
     SPEC_METHOD: Method for computing spectra; ['single-taper', 'st', 'cwt2']. \n
     DATA_PATH: Path to miniseed files \n
@@ -200,10 +202,15 @@ def process(spec_method, data_path, output_path, win_length,
     sa = StreamAdapter(data_path)
     stations = sa.getStationNames()
 
+    print ""
+    print 'Stations Found:'
+    print stations
+    print ""
+
     for station in stations:
 
-        st = sa.getStream(stations[0], start_time=start_time, end_time=end_time)
-
+        st = sa.getStream(station, start_time=start_time, end_time=end_time)
+        
         if(not len(st)): continue # no data found
 
         (master_curve, hvsr_freq,
@@ -238,11 +245,13 @@ def process(spec_method, data_path, output_path, win_length,
         error = np.dot(std.T, std)
         error /= float(nwindows - 1)
 
-        print "Computing sparse model covariance"
-        sp_model = GraphLassoCV()
-        sp_model.fit(std)
-        sp_cov = sp_model.covariance_
-        sp_prec = sp_model.precision_
+        if(compute_sparse_covariance):
+            print "Computing sparse model covariance"
+            sp_model = GraphLassoCV()
+            sp_model.fit(std)
+            sp_cov = sp_model.covariance_
+            sp_prec = sp_model.precision_
+        # end if
 
         if CLIP_TO_FREQ:
             lclip = find_nearest_idx(hvsr_freq, lowest_freq)
@@ -279,12 +288,14 @@ def process(spec_method, data_path, output_path, win_length,
         print "Log determinant of error matrix: " + str(logdeterr)
         np.savetxt(saveprefix + '.logdeterror.txt', np.array(logdeterr))
 
-        # sparse equivalent
-        np.savetxt(saveprefix + '.sperror.txt', sp_cov)
-        np.savetxt(saveprefix + '.invsperror.txt', sp_prec)
-        logdetsperr = np.linalg.slogdet(sp_cov)
-        print "Log determinant of sparse error matrix: " + str(logdetsperr)
-        np.savetxt(saveprefix + '.logdetsperror.txt', np.array(logdetsperr))
+        if(compute_sparse_covariance):
+            # sparse equivalent
+            np.savetxt(saveprefix + '.sperror.txt', sp_cov)
+            np.savetxt(saveprefix + '.invsperror.txt', sp_prec)
+            logdetsperr = np.linalg.slogdet(sp_cov)
+            print "Log determinant of sparse error matrix: " + str(logdetsperr)
+            np.savetxt(saveprefix + '.logdetsperror.txt', np.array(logdetsperr))
+        # end if
 
         f = plt.figure(figsize=(18, 6))
         gs = gridspec.GridSpec(4, 4, height_ratios=[40, 2, 40, 2])
@@ -315,21 +326,23 @@ def process(spec_method, data_path, output_path, win_length,
         cbar3.ax.tick_params(labelsize=7)
         a3.title.set_text('Inverse of covariance Matrix')
 
-        # Plot sparse covariance
-        a22 = plt.subplot(gs[2, 1])
-        ca22 = a22.imshow(sp_cov, interpolation='nearest')
-        cba22 = plt.subplot(gs[3, 1])
-        cbar22 = f.colorbar(ca22, cax=cba22, orientation='horizontal')
-        cbar22.ax.tick_params(labelsize=7)
-        a22.title.set_text('Sparse covariance Matrix')
+        if(compute_sparse_covariance):
+            # Plot sparse covariance
+            a22 = plt.subplot(gs[2, 1])
+            ca22 = a22.imshow(sp_cov, interpolation='nearest')
+            cba22 = plt.subplot(gs[3, 1])
+            cbar22 = f.colorbar(ca22, cax=cba22, orientation='horizontal')
+            cbar22.ax.tick_params(labelsize=7)
+            a22.title.set_text('Sparse covariance Matrix')
 
-        # Plot inverse of sparse covariance (precision)
-        a23 = plt.subplot(gs[2, 2])
-        ca23 = a23.imshow(sp_prec, interpolation='nearest')
-        cba23 = plt.subplot(gs[3, 2])
-        cbar23 = f.colorbar(ca23, cax=cba23, orientation='horizontal')
-        cbar23.ax.tick_params(labelsize=7)
-        a23.title.set_text('Precision Matrix')
+            # Plot inverse of sparse covariance (precision)
+            a23 = plt.subplot(gs[2, 2])
+            ca23 = a23.imshow(sp_prec, interpolation='nearest')
+            cba23 = plt.subplot(gs[3, 2])
+            cbar23 = f.colorbar(ca23, cax=cba23, orientation='horizontal')
+            cbar23.ax.tick_params(labelsize=7)
+            a23.title.set_text('Precision Matrix')
+        # end if
 
         # Plot histogram
         a4 = plt.subplot(gs[:, 3])
