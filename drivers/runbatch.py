@@ -3,8 +3,7 @@ from htov.utils import StreamAdapter
 from mpi4py import MPI
 import glob, os, sys
 import obspy
-from obspy.core import Stream, UTCDateTime
-from obspy import read
+from obspy.core import UTCDateTime
 import numpy as np
 import matplotlib
 from collections import defaultdict
@@ -167,7 +166,9 @@ def process(spec_method, data_path, output_path, win_length,
         print '\nProcessing station %s..\n'%(station)
 
         st = sa.getStream(station, start_time=start_time, end_time=end_time)
-        
+
+        lonlat = sa.getLonLat(station)
+
         if(not len(st)): continue # no data found
 
         (master_curve, hvsr_freq,
@@ -241,6 +242,7 @@ def process(spec_method, data_path, output_path, win_length,
 
         np.savetxt(saveprefix + '.hv.txt', np.column_stack((hvsr_freq, master_curve, lerr, uerr)))
         np.savetxt(saveprefix + '.std.txt', np.std(hvsr_matrix, axis=0))
+        if(len(lonlat)): np.savetxt(saveprefix + '.lonlat.txt', np.array(lonlat))
         np.savetxt(saveprefix + '.error.txt', error)
         np.savetxt(saveprefix + '.inverror.txt', np.linalg.inv(error))
         logdeterr = np.linalg.slogdet(error)

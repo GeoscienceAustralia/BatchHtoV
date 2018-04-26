@@ -1,7 +1,9 @@
 import math, os
 import numpy as np
+import glob
 import pyasdf
-from obspy.core import UTCDateTime
+from obspy import read
+from obspy.core import UTCDateTime, Stream
 from scipy.signal.signaltools import detrend
 from obspy.signal.tf_misfit import cwt
 import mlpy.wavelet as wave
@@ -16,8 +18,10 @@ class StreamAdapter(object):
 
         self._data_path = data_path
         self._stations = []
+        self._stations_metadata = {}
         self._files_dict = defaultdict(list)
         self._buffer_size_in_mb = buffer_size_in_mb
+        self._ds = None
 
         if(os.path.isdir(data_path)):
             # harvest miniseed files
@@ -43,14 +47,16 @@ class StreamAdapter(object):
         else:
             self._input_type = 'asdf'
 
-            ds = None
             try:
-                ds = pyasdf.ASDFDataSet(self._data_path, mode='r')
+                self._ds = pyasdf.ASDFDataSet(self._data_path, mode='r')
             except:
                 raise NameError('Error reading file : %s'%(self._data_path))
             # end try
 
-            self._stations = list(set([x.split('.')[1] for x in ds.waveforms.list()]))
+            for s in self._ds.ifilter(self._ds.q.station == "*"):
+                sn = s._station_name.split('.')[1]
+                self._stations.append(sn)
+                self._stations_metadata[sn] = s
         # end if
     # end func
 
@@ -73,15 +79,26 @@ class StreamAdapter(object):
                 st += cst.slice(start_time, end_time)
             # end for
         elif(self._input_type=='asdf'):
-            ds = pyasdf.ASDFDataSet(self._data_path, mode='r')
-            ds.single_item_read_limit_in_mb = self._buffer_size_in_mb
+            self._ds.single_item_read_limit_in_mb = self._buffer_size_in_mb
 
-            st = ds.get_waveforms("*", station_name, "*", '*', start_time, end_time, '*')
+            st = self._ds.get_waveforms("*", station_name, "*", '*', start_time, end_time, '*')
         # end if
 
         # merge filling gaps
         st.merge(method=1, fill_value=0)
         return st
+    # end func
+
+    def getLonLat(self, station_name):
+        if(self._input_type=='asdf'):
+            try:
+                return [self._stations_metadata[station_name].coordinates['longitude'],
+                        self._stations_metadata[station_name].coordinates['latitude']]
+            except:
+                raise NameError('Station not found..')
+            # end try
+        # end if
+        return []
     # end func
 # end class
 
