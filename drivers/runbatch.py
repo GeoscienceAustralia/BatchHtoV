@@ -1,10 +1,10 @@
 from htov import batch
+from htov.utils import StreamAdapter
 from mpi4py import MPI
 import glob, os, sys
 import obspy
 from obspy.core import Stream, UTCDateTime
 from obspy import read
-import pyasdf
 import numpy as np
 import matplotlib
 from collections import defaultdict
@@ -17,81 +17,6 @@ import math
 import sys
 import click
 from sklearn.covariance import GraphLassoCV, ledoit_wolf
-
-class StreamAdapter(object):
-    def __init__(self, data_path, buffer_size_in_mb=2048):
-        assert os.path.exists(data_path), 'Invalid path'
-
-        self._data_path = data_path
-        self._stations = []
-        self._files_dict = defaultdict(list)
-        self._buffer_size_in_mb = buffer_size_in_mb
-
-        if(os.path.isdir(data_path)):
-            # harvest miniseed files
-            self._input_type = 'mseed'
-
-            files = glob.glob(data_path + '/*.*N')
-            files += glob.glob(data_path + '/*.*E')
-            files += glob.glob(data_path + '/*.*Z')
-
-            if(len(files) % 3): raise NameError('Mismatch in component file-count detected..')
-
-            # extract station names
-            for f in files:
-                try:
-                    s = read(f)
-                    self._files_dict[s.traces[0].stats.station].append(f)
-                    self._stations.append(s.traces[0].stats.station)
-                except:
-                    raise NameError('Error reading file :%s'%(f))
-                # end try
-            # end for
-            self._stations = list(set(self._stations))
-        else:
-            self._input_type = 'asdf'
-
-            ds = None
-            try:
-                ds = pyasdf.ASDFDataSet(self._data_path, mode='r')
-            except:
-                raise NameError('Error reading file : %s'%(self._data_path))
-            # end try
-
-            self._stations = list(set([x.split('.')[1] for x in ds.waveforms.list()]))
-        # end if
-    # end func
-
-    def getStationNames(self):
-        return self._stations
-    # end func
-
-    def getStream(self, station_name, start_time, end_time):
-        if(station_name not in self._stations): raise NameError('Error: station-name not found.')
-
-        if (type(start_time)!=UTCDateTime): raise NameError('start_time must be of type UTCDateTime')
-        if (type(end_time) != UTCDateTime): raise NameError('end_time must be of type UTCDateTime')
-
-        st = None
-        if(self._input_type == 'mseed'):
-            st = Stream()
-
-            for f in self._files_dict[station_name]:
-                cst = read(f)
-                st += cst.slice(start_time, end_time)
-            # end for
-        elif(self._input_type=='asdf'):
-            ds = pyasdf.ASDFDataSet(self._data_path, mode='r')
-            ds.single_item_read_limit_in_mb = self._buffer_size_in_mb
-
-            st = ds.get_waveforms("*", station_name, "*", '*', start_time, end_time, '*')
-        # end if
-
-        # merge filling gaps
-        st.merge(method=1, fill_value=0)
-        return st
-    # end func
-# end class
 
 CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 
