@@ -18,12 +18,13 @@ import click
 from sklearn.covariance import GraphLassoCV, ledoit_wolf
 
 class StreamAdapter(object):
-    def __init__(self, data_path):
+    def __init__(self, data_path, buffer_size_in_mb=2048):
         assert os.path.exists(data_path), 'Invalid path'
 
         self._data_path = data_path
         self._stations = []
         self._files_dict = defaultdict(list)
+        self._buffer_size_in_mb = buffer_size_in_mb
 
         if(os.path.isdir(data_path)):
             # harvest miniseed files
@@ -80,6 +81,8 @@ class StreamAdapter(object):
             # end for
         elif(self._input_type=='asdf'):
             ds = pyasdf.ASDFDataSet(self._data_path, mode='r')
+            ds.single_item_read_limit_in_mb = self._buffer_size_in_mb
+
             st = ds.get_waveforms("*", station_name, "*", '*', start_time, end_time, '*')
         # end if
 
@@ -104,7 +107,7 @@ CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 @click.option('--zdetect-threshold', default=0.95, help="Threshold, as a percentile, for the characteristic function to find quiet areas")
 @click.option('--nfreq', default=50, help="Number of frequency bins")
 @click.option('--fmin', default=0.1, help="Minimum frequency")
-@click.option('--fmax', default=40., help="Minimum frequency")
+@click.option('--fmax', default=40., help="Minimum frequency, which is clipped to the Nyquist value if larger")
 @click.option('--freq-sampling', default='log',
               type=click.Choice(['linear', 'log']),
               help="Sampling method for frequency bins")
@@ -133,11 +136,15 @@ CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 @click.option('--end-time', default='2100-01-01T00:00:00',
               type=str,
               help="Date and time (in UTC format) to stop at; default is year 2100.")
+@click.option('--read-buffer-mb', default=2048,
+              type=int,
+              help="Data read buffer in MB (only applicable for asdf files)")
 def process(spec_method, data_path, output_path, win_length,
             zdetect_win_length, zdetect_threshold, nfreq, fmin,
             fmax, freq_sampling, resample_log_freq, smooth_spectra_method,
             clip_fmin, clip_fmax, clip_freq, master_curve_method,
-            output_prefix, compute_sparse_covariance, start_time, end_time):
+            output_prefix, compute_sparse_covariance, start_time, end_time,
+            read_buffer_mb):
     """
     SPEC_METHOD: Method for computing spectra; ['single-taper', 'st', 'cwt2']. \n
     DATA_PATH: Path to miniseed files \n
@@ -199,7 +206,7 @@ def process(spec_method, data_path, output_path, win_length,
     lowest_freq     = clip_fmin
     highest_freq    = clip_fmax
 
-    sa = StreamAdapter(data_path)
+    sa = StreamAdapter(data_path, buffer_size_in_mb=read_buffer_mb)
     stations = sa.getStationNames()
 
     print ""
@@ -208,6 +215,7 @@ def process(spec_method, data_path, output_path, win_length,
     print ""
 
     for station in stations:
+        print '\nProcessing station %s..\n'%(station)
 
         st = sa.getStream(station, start_time=start_time, end_time=end_time)
         
@@ -225,7 +233,8 @@ def process(spec_method, data_path, output_path, win_length,
                                                   window_length=win_length,
                                                   bin_samples=nfrequencies,
                                                   bin_sampling=freq_sampling,
-                                                  f_min=initialfreq, f_max=finalfreq,
+                                                  f_min=initialfreq,
+                                                  f_max=np.min([finalfreq, (1./st[0].stats.delta)*0.5]),
                                                   zdetector_window_length=zdetect_win_length,
                                                   resample_log_freq=resample_log_freq,
                                                   smoothing=smooth_spectra_method,
@@ -282,6 +291,7 @@ def process(spec_method, data_path, output_path, win_length,
         saveprefix = os.path.join(output_path, tag)
 
         np.savetxt(saveprefix + '.hv.txt', np.column_stack((hvsr_freq, master_curve, lerr, uerr)))
+        np.savetxt(saveprefix + '.std.txt', np.std(hvsr_matrix, axis=0))
         np.savetxt(saveprefix + '.error.txt', error)
         np.savetxt(saveprefix + '.inverror.txt', np.linalg.inv(error))
         logdeterr = np.linalg.slogdet(error)
