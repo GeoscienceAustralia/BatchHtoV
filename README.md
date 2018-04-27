@@ -21,10 +21,28 @@ This utility has been extended to implement HVTFA using CWT and Stockwell transf
 
 ### Raijin
 
-* Download `mlpy`
+#### Load Requisite Modules
+* `module purge`
 * `module load gsl/1.15`
+* `module load fftw3/3.3.4`
+* `module load python/2.7.13`
+* `module load openmpi/2.1.1`
+* `module load mpi4py/3.0.0-py2`
+* `module load hdf5/1.10.2p`
+
+#### mlpy
+* Download `mlpy`
 * `pip install --global-option=build_ext --global-option="-I/apps/gsl/1.15/include/" --global-option="-L/apps/gsl/1.15/lib/" mlpy-3.5.0.tar.gz --user`
-* module load fftw3/3.3.4
-* `pip install --install-option="--prefix=$PREFIX_PATH" git+https://github.com/synergetics/stockwell_transform`
-* `pip install mtspec`
+
+#### stockwell-transform
+* `pip install git+https://github.com/synergetics/stockwell_transform --user`
+
+#### mtspec
+* `pip install mtspec --user`
+
+#### h5py
+* `CC="mpicc" HDF5_MPI="ON" HDF5_DIR=/apps/hdf5/1.10.2p HDF5_VERSION=1.10.2 pip install --no-binary=h5py h5py --user`
+
+#### pyasdf
+* `pip install pyasdf --user`
 
