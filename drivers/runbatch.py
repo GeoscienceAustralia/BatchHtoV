@@ -1,6 +1,6 @@
+from mpi4py import MPI
 from htov import batch
 from htov.utils import StreamAdapter
-from mpi4py import MPI
 import glob, os, sys
 import obspy
 from obspy.core import UTCDateTime
