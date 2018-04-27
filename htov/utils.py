@@ -48,7 +48,8 @@ class StreamAdapter(object):
             self._input_type = 'asdf'
 
             try:
-                self._ds = pyasdf.ASDFDataSet(self._data_path, mode='r')
+                self._ds = pyasdf.ASDFDataSet(self._data_path, mode='r', 
+                                              single_item_read_limit_in_mb=self._buffer_size_in_mb)
             except:
                 raise NameError('Error reading file : %s'%(self._data_path))
             # end try
@@ -79,8 +80,6 @@ class StreamAdapter(object):
                 st += cst.slice(start_time, end_time)
             # end for
         elif(self._input_type=='asdf'):
-            self._ds.single_item_read_limit_in_mb = self._buffer_size_in_mb
-
             st = self._ds.get_waveforms("*", station_name, "*", '*', start_time, end_time, '*')
         # end if
 
