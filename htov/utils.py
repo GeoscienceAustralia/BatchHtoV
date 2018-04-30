@@ -84,7 +84,12 @@ class StreamAdapter(object):
         # end if
 
         # merge filling gaps
-        st.merge(method=1, fill_value=0)
+        try:
+            st.merge(method=1, fill_value=0)
+        except:
+            print 'Merge failed for station %s ..'%(station_name)
+            st = Stream()
+        # end try
         return st
     # end func
 

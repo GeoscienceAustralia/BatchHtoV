@@ -242,7 +242,7 @@ def process(spec_method, data_path, output_path, win_length,
 
         np.savetxt(saveprefix + '.hv.txt', np.column_stack((hvsr_freq, master_curve, lerr, uerr)))
         np.savetxt(saveprefix + '.std.txt', np.std(hvsr_matrix, axis=0))
-        if(len(lonlat)): np.savetxt(saveprefix + '.lonlat.txt', np.array(lonlat))
+        if(len(lonlat)): np.savetxt(saveprefix + '.lonlat.txt', np.array(lonlat).T)
         np.savetxt(saveprefix + '.error.txt', error)
         np.savetxt(saveprefix + '.inverror.txt', np.linalg.inv(error))
         logdeterr = np.linalg.slogdet(error)
