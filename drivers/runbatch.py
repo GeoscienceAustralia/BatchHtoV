@@ -55,6 +55,8 @@ CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
               help="Prefix for output file names; default is composed of station name and spectra method")
 @click.option('--compute-sparse-covariance', is_flag=True,
               help="Compute sparse covariance")
+@click.option('--station-names', default='*', type=str,
+              help="Stations name(s) (space-delimited) to process; default is '*', which processes all available stations.")
 @click.option('--start-time', default='1900-01-01T00:00:00',
               type=str,
               help="Date and time (in UTC format) to start from; default is year 1900.")
@@ -68,8 +70,8 @@ def process(spec_method, data_path, output_path, win_length,
             zdetect_win_length, zdetect_threshold, nfreq, fmin,
             fmax, freq_sampling, resample_log_freq, smooth_spectra_method,
             clip_fmin, clip_fmax, clip_freq, master_curve_method,
-            output_prefix, compute_sparse_covariance, start_time, end_time,
-            read_buffer_mb):
+            output_prefix, compute_sparse_covariance, station_names, start_time,
+            end_time, read_buffer_mb):
     """
     SPEC_METHOD: Method for computing spectra; ['single-taper', 'st', 'cwt2']. \n
     DATA_PATH: Path to miniseed files \n
@@ -88,7 +90,7 @@ def process(spec_method, data_path, output_path, win_length,
         print('Output-path:             %s' % output_path)
         print('Win. Length:             %d (seconds)' % win_length)
         print('Zdetect Win. Length:     %d (samples)' % zdetect_win_length)
-        print('Zdetect threshold:       %d' % zdetect_threshold)
+        print('Zdetect threshold:       %3.2f' % zdetect_threshold)
         print('nfreq:                   %d' % nfreq)
         print('fmin:                    %f' % fmin)
         print('fmax:                    %f' % fmax)
@@ -128,6 +130,15 @@ def process(spec_method, data_path, output_path, win_length,
         raise NameError('Failed to convert start or end time to UTCDateTime')
     # end try
 
+    # check station names
+    try:
+        if(station_names != '*'):
+            station_names = set([s.upper() for s in station_names.split(' ')])
+    except:
+        raise NameError('Invalid station-names list..')
+    # end try
+
+
     nfrequencies    = nfreq
     initialfreq     = fmin
     finalfreq       = fmax
@@ -163,6 +174,13 @@ def process(spec_method, data_path, output_path, win_length,
     proc_stations = comm.bcast(proc_stations, root=0)
 
     for station in proc_stations[rank]:
+
+        # skip stations based on user input
+        if(station_names=='*'): pass
+        else:
+            if station not in station_names: continue
+        # end if
+
         print '\nProcessing station %s..\n'%(station)
 
         st = sa.getStream(station, start_time=start_time, end_time=end_time)
