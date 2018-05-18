@@ -28,11 +28,18 @@ CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 @click.argument('output-path', required=True,
                 type=click.Path(exists=True))
 @click.option('--win-length', default=200, help="Window length in seconds")
-@click.option('--zdetect-win-length', default=40, help="Zdetect window length in samples")
-@click.option('--zdetect-threshold', default=0.95, help="Threshold, as a percentile, for the characteristic function to find quiet areas")
+@click.option('--trigger-method', default='zdetect', type=click.Choice(['zdetect', 'stalta']),
+                help="Triggering method to use")
+@click.option('--trigger-wlen', default=0.5, type=float, help="Triggering window length in seconds if method='zdetect', otherwise"
+              " this is window size fot short time average in 'stalta'")
+@click.option('--trigger-wlen-long', default=30, help="Window length in seconds for long time average if method='stalta'; "
+              "this parameter has no effect if method='zdetect'")
+@click.option('--trigger-threshold', default=0.95, help="Threshold, as a percentile, for the characteristic function to find quiet areas")
 @click.option('--nfreq', default=50, help="Number of frequency bins")
 @click.option('--fmin', default=0.1, help="Minimum frequency")
 @click.option('--fmax', default=40., help="Minimum frequency, which is clipped to the Nyquist value if larger")
+@click.option('--lowpass-value', default=None, type=float, help="Lowpass filter value (Hz)")
+@click.option('--highpass-value', default=None, type=float, help="Highpass filter value (Hz)")
 @click.option('--freq-sampling', default='log',
               type=click.Choice(['linear', 'log']),
               help="Sampling method for frequency bins")
@@ -67,8 +74,10 @@ CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
               type=int,
               help="Data read buffer in MB (only applicable for asdf files)")
 def process(spec_method, data_path, output_path, win_length,
-            zdetect_win_length, zdetect_threshold, nfreq, fmin,
-            fmax, freq_sampling, resample_log_freq, smooth_spectra_method,
+            trigger_method, trigger_wlen, trigger_wlen_long, 
+            trigger_threshold, nfreq, fmin,
+            fmax, lowpass_value, highpass_value, freq_sampling, 
+            resample_log_freq, smooth_spectra_method,
             clip_fmin, clip_fmax, clip_freq, master_curve_method,
             output_prefix, compute_sparse_covariance, station_names, start_time,
             end_time, read_buffer_mb):
@@ -89,18 +98,30 @@ def process(spec_method, data_path, output_path, win_length,
         print('Data-path:               %s' % data_path)
         print('Output-path:             %s' % output_path)
         print('Win. Length:             %d (seconds)' % win_length)
-        print('Zdetect Win. Length:     %d (samples)' % zdetect_win_length)
-        print('Zdetect threshold:       %3.2f' % zdetect_threshold)
+        
+        print('Triggering method:       %s' % trigger_method)
+        if(trigger_method=='zdetect'):
+            print('Trigger Win. Length:     %f (seconds)' % trigger_wlen)
+        else:
+            print('Trigger Win. Length sta: %f (seconds)' % trigger_wlen)
+            print('Trigger Win. Length lta: %f (seconds)' % trigger_wlen_long)
+
+        print('Trigger threshold:       %3.2f' % trigger_threshold)
+        
         print('nfreq:                   %d' % nfreq)
         print('fmin:                    %f' % fmin)
         print('fmax:                    %f' % fmax)
+        if(lowpass_value):
+            print('lowpass_value:           %f' % lowpass_value)
+        if(highpass_value):
+            print('highpass_value:          %f' % highpass_value)
         print('freq_sampling:           %s' % freq_sampling)
         print('resample_log_freq:       %d' % resample_log_freq)
         print('smooth_spectra_method:   %s' % smooth_spectra_method)
         print('clip_freq:               %d' % clip_freq)
         if(clip_freq):
-            print('\tclip_fmin:         %d' % clip_fmin)
-            print('\tclip_fmax:         %d' % clip_fmax)
+            print('\tclip_fmin:             %d' % clip_fmin)
+            print('\tclip_fmax:             %d' % clip_fmax)
         print('Output-prefix:           %s' % output_prefix)
         print('Start date and time:     %s' % start_time)
         print('End date and time:       %s' % end_time)
@@ -121,6 +142,12 @@ def process(spec_method, data_path, output_path, win_length,
         msg = "Error: Log-space frequency bin resampling can only be applied if --freq-sampling is 'linear' and --spec-method is 'cwt2'. Aborting..\n"
         sys.exit(msg)
     #end if
+
+    # Triggering parameters
+    triggering_options = {'method':trigger_method,
+                          'trigger_wlen': trigger_wlen,
+                          'trigger_wlen_long': trigger_wlen_long,
+                          'trigger_threshold': trigger_threshold}
 
     # Get start and end times
     try:
@@ -203,10 +230,11 @@ def process(spec_method, data_path, output_path, win_length,
                                                   bin_sampling=freq_sampling,
                                                   f_min=initialfreq,
                                                   f_max=np.min([finalfreq, (1./st[0].stats.delta)*0.5]),
-                                                  zdetector_window_length=zdetect_win_length,
+                                                  triggering_options=triggering_options,
+                                                  lowpass_value = lowpass_value,
+                                                  highpass_value = highpass_value,
                                                   resample_log_freq=resample_log_freq,
-                                                  smoothing=smooth_spectra_method,
-                                                  threshold=zdetect_threshold )
+                                                  smoothing=smooth_spectra_method)
         if(master_curve is None): sys.exit('Failed to process data.')
 
         nwindows = len(hvsr_matrix)
@@ -286,8 +314,8 @@ def process(spec_method, data_path, output_path, win_length,
         a1.plot(hvsr_freq, uerr, 'b', lw=0.5)
         a1.set_yscale('log')
         a1.set_xscale('log')
-        a1.grid(which='major', linestyle='-', linewidth='0.5', color='k')
-        a1.grid(which='minor', linestyle=':', linewidth='0.5', color='grey')
+        a1.grid(which='major', linestyle='-', linewidth=0.5, color='k')
+        a1.grid(which='minor', linestyle=':', linewidth=0.5, color='grey')
 
         # Plot covariance
         a2 = plt.subplot(gs[0, 1])

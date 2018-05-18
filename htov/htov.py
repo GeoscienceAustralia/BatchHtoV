@@ -15,7 +15,7 @@ from mtspec import mtspec, sine_psd
 import numpy as np
 from obspy.core.util import score_at_percentile as quantile
 from obspy.signal.filter import highpass, lowpass, bandpass
-from obspy.signal.trigger import z_detect as zdetect
+from obspy.signal.trigger import z_detect as zdetect, classic_sta_lta, recursive_sta_lta
 from scipy.signal import resample
 from scipy.interpolate import interp1d
 from scipy.signal import argrelextrema
@@ -108,7 +108,7 @@ def resampleFilterAndCutTraces(stream, resampling_rate, lowpass_value,
         message_function('Trimming traces...')
     stream.trim(starttime, endtime)
 
-def calculateCharacteristicNoiseFunction(stream, threshold, window_length,
+def calculateCharacteristicNoiseFunction(stream, triggering_options,
                                          message_function=None):
     """
     Calculates a characteristic function for the noise and threshold.
@@ -117,8 +117,18 @@ def calculateCharacteristicNoiseFunction(stream, threshold, window_length,
     functions and a second list with the thresholds.
 
     :param stream: obspy.core.Stream
-    :param threshold: Percentile value, e.g 0.95 mean the 95% percentile.
-    :param window_length: Window length passed to the z-detector.
+    :param triggering_options: dictionary of triggering options.
+        'method': can be either 'zdetect' or 'stalta'
+        'trigger_wlen': Window length (s) if method='zdetector'; short time average
+                        window length if method='stalta'
+        'trigger_wlen_long': long time average window length if method='stalta'; this
+                             parameter has no effect if method='zdetect'
+        'trigger_threshold': Threshold for the characteristic function to find the quiet
+                             areas. Everything under this value will be considered quiet.
+                             If it is between 0.00 and 1.00 it will be treated as a
+                             percentile value which is the recommended choise. The
+                             percentile will be applied to each single trace separately.
+
     :param message_function: Python function
         If given, a string will be passed to this function to document the
         current progress.
@@ -127,8 +137,19 @@ def calculateCharacteristicNoiseFunction(stream, threshold, window_length,
     if message_function:
         message_function('Calculating characteristic noise function...')
     # Get the characteristic function for each Trace.
-    for trace in stream:
-        charNoiseFunctions.append(zdetect(trace.data, window_length))
+
+    trigger_wlen = triggering_options['trigger_wlen']
+    trigger_wlen_long = triggering_options['trigger_wlen_long']
+    trigger_threshold = triggering_options['trigger_threshold']
+    if(triggering_options['method']=='zdetect'):
+        for trace in stream:
+            charNoiseFunctions.append(zdetect(trace.data, int(trigger_wlen*trace.stats.sampling_rate)))
+    elif(triggering_options['method']=='stalta'):
+        for trace in stream:
+            charNoiseFunctions.append(recursive_sta_lta(trace.data,
+                                                        int(trigger_wlen*trace.stats.sampling_rate),
+                                                        int(trigger_wlen_long*trace.stats.sampling_rate)))
+    # end if
     lengths = [len(tr.data) for tr in stream]
     if message_function:
         message_function('Applying threshold...')
@@ -137,7 +158,7 @@ def calculateCharacteristicNoiseFunction(stream, threshold, window_length,
     for data in charNoiseFunctions:
         length = len(data)
         s_data = np.sort(data)
-        thresholds.append(s_data[int(threshold * length)])
+        thresholds.append(s_data[int(trigger_threshold * length)])
     return charNoiseFunctions, thresholds
 
 

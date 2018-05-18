@@ -19,8 +19,12 @@ def create_HVSR(filename, vertical_channel=None, spectra_method='multitaper',
                 'nfft':None},smoothing='konno-ohmachi',
                 master_curve_method='mean', lowpass_value=None,
                 highpass_value=None, new_sample_rate=None, zerophase=False,
-                corners=4, starttime=None, endtime=None, threshold=0.95,
-                window_length=25, cutoff_value=0.1, zdetector_window_length=40,
+                corners=4, starttime=None, endtime=None,
+                triggering_options={'method':'zdetect',
+                          'trigger_wlen': 0.5,
+                          'trigger_wlen_long': 30,
+                          'trigger_threshold': 0.95},
+                window_length=25, cutoff_value=0.1,
                 message_function=None,bin_samples=100, bin_sampling='log',
                 f_min=0.1,f_max=50.0, resample_log_freq=False):
     """
@@ -63,19 +67,22 @@ def create_HVSR(filename, vertical_channel=None, spectra_method='multitaper',
     :param endtime: UTCDateTime, float
         Determines where to cut the end of the Stream object. If it is a float
         it will be considered as the offset in seconds.
-    :param threshold: float
-        Threshold for the characteristic function to find the quiet areas.
-        Everything under this value will be considered quiet. If it is between
-        0.00 and 1.00 it will be treated as a percentile value which is the
-        recommended choise. The percentile will be applied to each single trace
-        seperately.
+    :param triggering_options: dictionary
+        'method': can be either 'zdetect' or 'stalta'
+        'trigger_wlen': Window length (s) if method='zdetector'; short time average
+                        window length if method='stalta'
+        'trigger_wlen_long': long time average window length if method='stalta'; this
+                             parameter has no effect if method='zdetect'
+        'trigger_threshold': Threshold for the characteristic function to find the quiet
+                             areas. Everything under this value will be considered quiet.
+                             If it is between 0.00 and 1.00 it will be treated as a
+                             percentile value which is the recommended choise. The
+                             percentile will be applied to each single trace separately.
     :param window_length: float
         Window length for the single HVSR windows in seconds.
     :param message_function: Python function
         If given, a string will be passed to this function to document the
         current progress.
-    :param zdetector_window_length: int
-        Window length for the zdetector.
     :param cutoff_value: float
         If given, than this value determines which part of the bottom and top
         frequencies are discarded for the calculation of the master HVSR curve.
@@ -133,8 +140,8 @@ def create_HVSR(filename, vertical_channel=None, spectra_method='multitaper',
     window_length = int(window_length * stream[0].stats.sampling_rate)
     # Calculate the characteristic noise Function.
     charNoiseFunctions, thresholds = \
-            calculateCharacteristicNoiseFunction(stream, threshold,
-            zdetector_window_length, message_function=message_function)
+            calculateCharacteristicNoiseFunction(stream, triggering_options=triggering_options,
+                                                 message_function=message_function)
     npts = stream[0].stats.npts
     # Find the quiet intervals in each Trace.
     intervals, _, _ = getQuietIntervals(charNoiseFunctions, thresholds,
