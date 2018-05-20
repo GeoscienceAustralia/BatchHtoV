@@ -215,6 +215,7 @@ def process(spec_method, data_path, output_path, win_length,
         lonlat = sa.getLonLat(station)
 
         if(not len(st)): continue # no data found
+        else: print st
 
         (master_curve, hvsr_freq,
          error, hvsr_matrix) = batch.create_HVSR( st, spectra_method=spectra_method,
