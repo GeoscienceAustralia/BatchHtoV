@@ -141,14 +141,49 @@ def calculateCharacteristicNoiseFunction(stream, triggering_options,
     trigger_wlen = triggering_options['trigger_wlen']
     trigger_wlen_long = triggering_options['trigger_wlen_long']
     trigger_threshold = triggering_options['trigger_threshold']
+    trigger_lowpass_value = triggering_options['trigger_lowpass_value']
+    trigger_highpass_value = triggering_options['trigger_highpass_value']
+
+    def filterTraces(data, sr, hp=None, lp=None, corners=4, zerophase=False):
+        """
+        :param data: trace data
+        :param sr: sampling rate
+        :param hp: highpass value
+        :param lp: lowpass value
+        :param corners: filter corners
+        :param zerophase: boolean for zerophase filter
+        :return: filtered data
+        """
+        if lp and hp:
+            data = bandpass(data, hp, lp, sr,
+                            corners=corners, zerophase=zerophase)
+        elif lp:
+            data = lowpass(data, lp, sr,
+                           corners=corners, zerophase=zerophase)
+        elif hp:
+            data = highpass(data, hp, sr,
+                            corners=corners, zerophase=zerophase)
+        # end if
+
+        return data
+    # end func
+
     if(triggering_options['method']=='zdetect'):
         for trace in stream:
-            charNoiseFunctions.append(zdetect(trace.data, int(trigger_wlen*trace.stats.sampling_rate)))
+            data = filterTraces(np.array(trace.data), trace.stats.sampling_rate,
+                                trigger_highpass_value, trigger_lowpass_value)
+
+            charNoiseFunctions.append(zdetect(data, int(trigger_wlen*trace.stats.sampling_rate)))
+        # end for
     elif(triggering_options['method']=='stalta'):
         for trace in stream:
-            charNoiseFunctions.append(recursive_sta_lta(trace.data,
+            data = filterTraces(np.array(trace.data), trace.stats.sampling_rate,
+                                trigger_highpass_value, trigger_lowpass_value)
+
+            charNoiseFunctions.append(recursive_sta_lta(data,
                                                         int(trigger_wlen*trace.stats.sampling_rate),
                                                         int(trigger_wlen_long*trace.stats.sampling_rate)))
+        # end for
     # end if
     lengths = [len(tr.data) for tr in stream]
     if message_function:

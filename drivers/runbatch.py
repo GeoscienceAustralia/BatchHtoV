@@ -32,9 +32,13 @@ CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
                 help="Triggering method to use")
 @click.option('--trigger-wlen', default=0.5, type=float, help="Triggering window length in seconds if method='zdetect', otherwise"
               " this is window size for short time average in 'stalta'")
-@click.option('--trigger-wlen-long', default=30, help="Window length in seconds for long time average if method='stalta'; "
+@click.option('--trigger-wlen-long', default=30, type=float, help="Window length in seconds for long time average if method='stalta'; "
               "this parameter has no effect if method='zdetect'")
-@click.option('--trigger-threshold', default=0.95, help="Threshold, as a percentile, for the characteristic function to find quiet areas")
+@click.option('--trigger-threshold', default=0.95, type=float, help="Threshold, as a percentile, for the characteristic function to find quiet areas")
+@click.option('--trigger-lowpass-value', default=None, type=float, help="Lowpass filter value (Hz) to use for triggering only and not for data "
+                                                            "data processing")
+@click.option('--trigger-highpass-value', default=None, type=float, help="Highpass filter value (Hz) to use for triggering only and not for data "
+                                                             "data processing")
 @click.option('--nfreq', default=50, help="Number of frequency bins")
 @click.option('--fmin', default=0.1, help="Lowest frequency")
 @click.option('--fmax', default=40., help="Highest frequency, which is clipped to the Nyquist value if larger")
@@ -75,12 +79,12 @@ CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
               help="Data read buffer in MB (only applicable for asdf files)")
 def process(spec_method, data_path, output_path, win_length,
             trigger_method, trigger_wlen, trigger_wlen_long, 
-            trigger_threshold, nfreq, fmin,
-            fmax, lowpass_value, highpass_value, freq_sampling, 
-            resample_log_freq, smooth_spectra_method,
-            clip_fmin, clip_fmax, clip_freq, master_curve_method,
-            output_prefix, compute_sparse_covariance, station_names, start_time,
-            end_time, read_buffer_mb):
+            trigger_threshold, trigger_lowpass_value, trigger_highpass_value,
+            nfreq, fmin, fmax, lowpass_value, highpass_value, freq_sampling,
+            resample_log_freq, smooth_spectra_method, clip_fmin, clip_fmax,
+            clip_freq, master_curve_method, output_prefix,
+            compute_sparse_covariance, station_names, start_time, end_time,
+            read_buffer_mb):
     """
     SPEC_METHOD: Method for computing spectra; ['single-taper', 'st', 'cwt2']. \n
     DATA_PATH: Path to miniseed files \n
@@ -112,9 +116,9 @@ def process(spec_method, data_path, output_path, win_length,
         print('fmin:                    %f' % fmin)
         print('fmax:                    %f' % fmax)
         if(lowpass_value):
-            print('lowpass_value:           %f' % lowpass_value)
+            print('lowpass_value:           %f (Hz)' % lowpass_value)
         if(highpass_value):
-            print('highpass_value:          %f' % highpass_value)
+            print('highpass_value:          %f (Hz)' % highpass_value)
         print('freq_sampling:           %s' % freq_sampling)
         print('resample_log_freq:       %d' % resample_log_freq)
         print('smooth_spectra_method:   %s' % smooth_spectra_method)
@@ -147,7 +151,9 @@ def process(spec_method, data_path, output_path, win_length,
     triggering_options = {'method':trigger_method,
                           'trigger_wlen': trigger_wlen,
                           'trigger_wlen_long': trigger_wlen_long,
-                          'trigger_threshold': trigger_threshold}
+                          'trigger_threshold': trigger_threshold,
+                          'trigger_lowpass_value': trigger_lowpass_value,
+                          'trigger_highpass_value': trigger_highpass_value}
 
     # Get start and end times
     try:
