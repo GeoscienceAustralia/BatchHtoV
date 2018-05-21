@@ -31,13 +31,13 @@ CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 @click.option('--trigger-method', default='zdetect', type=click.Choice(['zdetect', 'stalta']),
                 help="Triggering method to use")
 @click.option('--trigger-wlen', default=0.5, type=float, help="Triggering window length in seconds if method='zdetect', otherwise"
-              " this is window size fot short time average in 'stalta'")
+              " this is window size for short time average in 'stalta'")
 @click.option('--trigger-wlen-long', default=30, help="Window length in seconds for long time average if method='stalta'; "
               "this parameter has no effect if method='zdetect'")
 @click.option('--trigger-threshold', default=0.95, help="Threshold, as a percentile, for the characteristic function to find quiet areas")
 @click.option('--nfreq', default=50, help="Number of frequency bins")
-@click.option('--fmin', default=0.1, help="Minimum frequency")
-@click.option('--fmax', default=40., help="Minimum frequency, which is clipped to the Nyquist value if larger")
+@click.option('--fmin', default=0.1, help="Lowest frequency")
+@click.option('--fmax', default=40., help="Highest frequency, which is clipped to the Nyquist value if larger")
 @click.option('--lowpass-value', default=None, type=float, help="Lowpass filter value (Hz)")
 @click.option('--highpass-value', default=None, type=float, help="Highpass filter value (Hz)")
 @click.option('--freq-sampling', default='log',
@@ -64,7 +64,7 @@ CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
               help="Compute sparse covariance")
 @click.option('--station-names', default='*', type=str,
               help="Stations name(s) (space-delimited) to process; default is '*', which processes all available stations.")
-@click.option('--start-time', default='1900-01-01T00:00:00',
+@click.option('--start-time', default='1970-01-01T00:00:00',
               type=str,
               help="Date and time (in UTC format) to start from; default is year 1900.")
 @click.option('--end-time', default='2100-01-01T00:00:00',

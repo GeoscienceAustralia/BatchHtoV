@@ -17,9 +17,7 @@ class SeisDB(object):
     '''
     Class for loading jason database that helps speed up random access to raw waveforms.
     This class was initially adapted from Ashby's implementation and has been copied over
-    from the passive-seismic repository. TODO: There is an outstanding bug in the numpy
-    array indexing functionality (currently disabled), which only works with specific
-    versions of numpy.
+    from the passive-seismic repository.
     '''
     def __init__(self, json_file=False, generate_numpy_index=True):
         self._json_loaded = False
@@ -141,11 +139,20 @@ class SeisDB(object):
                         "new_network": self._formatted_dict[k]["new_network"]}
                     for k in indices}
         else:
-            _indexed_np_array_masked = np.where((np.in1d(self._indexed_np_array['sta'], sta))
-                           & (np.in1d(self._indexed_np_array['cha'], chan))
-                           & np.logical_or(np.logical_and(self._indexed_np_array['st'] <= qs,  qs < self._indexed_np_array['et']),
-                                           (np.logical_and(qs <= self._indexed_np_array['st'],
-                                                           self._indexed_np_array['st'] < qe))))
+            _indexed_np_array_masked = None
+            if(chan=='*'):
+                _indexed_np_array_masked = np.where((np.in1d(self._indexed_np_array['sta'], sta))
+                                                    & np.logical_or(
+                    np.logical_and(self._indexed_np_array['st'] <= qs, qs < self._indexed_np_array['et']),
+                    (np.logical_and(qs <= self._indexed_np_array['st'],
+                                    self._indexed_np_array['st'] < qe))))
+            else:
+                _indexed_np_array_masked = np.where((np.in1d(self._indexed_np_array['sta'], sta))
+                               & (np.in1d(self._indexed_np_array['cha'], chan))
+                               & np.logical_or(np.logical_and(self._indexed_np_array['st'] <= qs,  qs < self._indexed_np_array['et']),
+                                               (np.logical_and(qs <= self._indexed_np_array['st'],
+                                                               self._indexed_np_array['st'] < qe))))
+            # end if
             # print(_indexed_np_array_masked[0])
             # for index in _indexed_np_array_masked[0]:
             #    print(self._indexed_np_array[index, 6])
@@ -329,9 +336,10 @@ class StreamAdapter(object):
                 st += cst.slice(start_time, end_time)
             # end for
         elif(self._input_type=='asdf'):
-            if(self._has_jason_db and 0):
+            if(self._has_jason_db):
                 st = self._ds_jason_db.fetchDataByTime(self._ds, station_name, '*',
-                                                       start_time, end_time )
+                                                       start_time.timestamp,
+                                                       end_time.timestamp)
             else:
                 st = self._ds.get_waveforms("*", station_name, "*", '*', start_time, end_time, '*')
             # end if
