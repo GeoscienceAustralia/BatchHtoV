@@ -215,10 +215,16 @@ class SeisDB(object):
             #print('Merging %d Traces ....' % len(st))
             # filling no data with 0
             #st.print_gaps()
-            st.merge()
-            return st
-        else:
-            return None
+            # merge filling gaps
+            try:
+                st.merge(method=1, fill_value=0)
+            except:
+                print 'Merge failed for station %s ..' % (matched_info["new_station"])
+                st = Stream()
+            # end try
+        # end if
+
+        return st
     #end func
 
     def fetchDataByTime(self, ds, sta, chan, query_starttime, query_endtime,

@@ -111,6 +111,10 @@ def process(spec_method, data_path, output_path, win_length,
             print('Trigger Win. Length lta: %f (seconds)' % trigger_wlen_long)
 
         print('Trigger threshold:       %3.2f' % trigger_threshold)
+        if(trigger_lowpass_value):
+            print('Trigger lowpass value:   %3.2f' % trigger_lowpass_value)
+        if(trigger_highpass_value):
+            print('Trigger highpass value:  %3.2f' % trigger_highpass_value)
         
         print('nfreq:                   %d' % nfreq)
         print('fmin:                    %f' % fmin)
