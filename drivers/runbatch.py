@@ -22,7 +22,7 @@ CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 @click.command(context_settings=CONTEXT_SETTINGS)
 @click.argument('spec-method',
                 required=True,
-                type=click.Choice(['single-taper', 'st', 'cwt2']))
+                type=click.Choice(['single-taper', 'multitaper', 'st', 'cwt2']))
 @click.argument('data-path',
                 type= click.Path(exists=True) or click.File('r'))
 @click.argument('output-path', required=True,
@@ -170,7 +170,7 @@ def process(spec_method, data_path, output_path, win_length,
     # check station names
     try:
         if(station_names != '*'):
-            station_names = set([s.upper() for s in station_names.split(' ')])
+            station_names = set([s.upper().replace("'", "") for s in station_names.split(' ')])
     except:
         raise NameError('Invalid station-names list..')
     # end try
