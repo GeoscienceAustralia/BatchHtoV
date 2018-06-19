@@ -113,7 +113,7 @@ def getAreasWithinThreshold(c_funct, threshold, min_width, feather=0):
     return np.array(areas)
 
 
-def cwt_TFA(data, delta, nf, f_min=0, f_max=0, w0=8, useMlpy=True, freq_spacing='log'):
+def cwt_TFA(data, delta, nf, f_min=0, f_max=0, w0=8, useMlpy=True, freq_spacing='log', freqs=None):
     """
     :param data: time dependent signal.
     :param delta: time step between two samples in data (in seconds)
@@ -137,7 +137,11 @@ def cwt_TFA(data, delta, nf, f_min=0, f_max=0, w0=8, useMlpy=True, freq_spacing=
     if f_max == 0:
         f_max = 0.4 / delta
 
-    freqs = np.logspace(np.log10(f_min), np.log10(f_max), nf)
+    no_freqs = False
+
+    if type(freqs) is not np.ndarray:
+        no_freqs = True
+        freqs = np.logspace(np.log10(f_min), np.log10(f_max), nf)
 
     if (useMlpy == False):
         # using cwt from obspy. Note that ObsPy only supports morlet
@@ -151,7 +155,7 @@ def cwt_TFA(data, delta, nf, f_min=0, f_max=0, w0=8, useMlpy=True, freq_spacing=
         return cfs, freqs, scales
     else:
         # spacing option only applies to mlpy
-        if freq_spacing=='linear':
+        if no_freqs and freq_spacing=='linear':
             oldnf = nf
             sr = 1.0/delta
             spacing = sr/wl

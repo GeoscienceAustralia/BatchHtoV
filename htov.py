@@ -214,7 +214,9 @@ def findCommonQuietAreas(areas, length, min_length):
 def calculateHVSR(stream, intervals, window_length, method, options,
                   master_method, cutoff_value, smoothing=None,
                   smoothing_count=1, smoothing_constant=40,
-                  message_function=None, bin_samples=100, bin_sampling='log',f_min=0.1,f_max=50.0):
+                  message_function=None, bin_samples=100,
+                  bin_sampling='log',f_min=0.1,f_max=50.0,
+                  frequencies=None,w0=None):
     """
     Calculates the HVSR curve.
     """
@@ -453,7 +455,92 @@ def calculateHVSR(stream, intervals, window_length, method, options,
         # Cut the hvsr matrix.
         hvsr_matrix = hvsr_matrix[0:num_good_intervals, :]
     # Use a mlpy Morlet CWT and isolate via the vertical spectrum maxima
-    elif method == 'cwt2':
+    elif method == 'cwtlog':
+        good_length = bin_samples
+
+        hvsr_matrix = np.ma.empty((length, good_length))
+        num_good_intervals = 0
+        for _i, interval in enumerate(intervals):
+            if message_function:
+                message_function('Calculating HVSR %i of %i...' % \
+                                 (_i+1, length))
+            v = [_j for _j, trace in enumerate(stream) if \
+                 trace.stats.orientation == 'vertical']
+            h = [_j for _j, trace in enumerate(stream) if \
+                 trace.stats.orientation == 'horizontal']
+            v = stream[v[0]].data[interval[0]: interval[0] + \
+                               window_length]
+            h1 = stream[h[0]].data[interval[0]: interval[0] + \
+                                window_length]
+            h2 = stream[h[1]].data[interval[0]: interval[0] + \
+                                window_length]
+            # Calculate the spectra.
+            if w0==None:
+		w0 = 8 # 16
+            v_cwt, v_freq, v_scales    = cwt_TFA(v,  stream[0].stats.delta, good_length, f_min, f_max, w0=w0, freq_spacing='log',freqs=frequencies)
+            h1_cwt, h1_freq, h1_scales = cwt_TFA(h1, stream[0].stats.delta, good_length, f_min, f_max, w0=w0, freq_spacing='log',freqs=frequencies)
+            h2_cwt, h2_freq, h2_sclaes = cwt_TFA(h2, stream[0].stats.delta, good_length, f_min, f_max, w0=w0, freq_spacing='log',freqs=frequencies)
+            # Convert to spectrum via vertical maxima search
+            #h_cwt = np.abs(np.sqrt((h1_cwt ** 2 + h2_cwt ** 2))) # FIXME test 0.5 * inner
+            h_cwt = np.sqrt(0.5 * (np.abs(h1_cwt) ** 2 + np.abs(h2_cwt) ** 2)) # FIXME test 0.5 * inner
+            v_cwt = np.abs(v_cwt)
+            v_spec = np.ma.array(np.zeros(v_freq.shape[0]),mask=np.ones(v_freq.shape[0]))
+            h_spec = np.ma.array(np.zeros(v_freq.shape[0]),mask=np.ones(v_freq.shape[0]))
+            #h_spec = np.zeros(v_freq.shape[0])
+
+            # Compute cone of influence for morlet wavelets (Torrence and Compo 1998)
+            # COI = sqrt(2.) * s
+            # , where s is wavelet scale.
+            cois = np.int_(np.floor(np.sqrt(2.)*v_scales*stream[0].stats.sampling_rate + 0.5))
+            for findex in xrange(v_freq.shape[0]):
+
+                f = v_freq[findex]
+                rayleighDelay = int(0.25 * (1.0/f) * stream[0].stats.sampling_rate + 0.5) # the + 0.5 at the end is to round to nearest for integer reference
+
+                # exclude cone of influence from regions searched for peaks.
+                startIdx = rayleighDelay if (rayleighDelay>cois[findex]) else cois[findex]
+                endIdx = v_cwt.shape[1] - cois[findex] - 1
+                extrema = argrelextrema(v_cwt[findex,
+                                        startIdx:endIdx], np.greater)
+                e = extrema[0]
+                if e.shape[0] == 0:
+                    print "No peaks found for frequency " + str(f)
+                    v_spec[findex] = np.ma.masked
+                    h_spec[findex] = np.ma.masked
+                else:
+                    vmax = v_cwt[findex,e]
+                    hmax_neg = h_cwt[findex,e-rayleighDelay]
+                    hmax_pos = h_cwt[findex,e+rayleighDelay]
+                    #for now, average it.
+                    #h_numer = np.sqrt(hmax_neg**2 + hmax_pos**2) #RMS creates bias
+                    #h_numer = 0.5 * (hmax_neg + hmax_pos)
+                    h_numer = np.maximum(hmax_neg,hmax_pos)
+                    v_numer = vmax
+                    h_spec[findex] = np.sum(h_numer) / h_numer.shape[0]
+                    v_spec[findex] = np.sum(v_numer) / v_numer.shape[0]
+            # Apply smoothing.
+            if smoothing:
+                if 'konno-ohmachi' in smoothing.lower():
+                    if _i == 0:
+                        sm_matrix = calculate_smoothing_matrix(v_freq,
+                                                           smoothing_constant)
+                    for _j in xrange(smoothing_count):
+                        v_spec = np.dot(v_spec, sm_matrix)
+                        h_spec = np.dot(h_spec, sm_matrix)
+            hv_spec = h_spec / v_spec
+            if _i == 0:
+                good_freq = v_freq
+                good_length = v_freq.shape[0]
+                # Create the matrix that will be used to store the single
+                # spectra.
+                hvsr_matrix = np.empty((length, good_length))
+            # Store it into the matrix if it has the correct length.
+            hvsr_matrix[num_good_intervals, 0:hv_spec.shape[0]] = hv_spec
+            num_good_intervals += 1
+        # Cut the hvsr matrix.
+        hvsr_matrix = hvsr_matrix[0:num_good_intervals, :]
+    # Use a mlpy Morlet CWT and isolate via the vertical spectrum maxima
+    elif method == 'cwtmlpy':
         good_length = bin_samples
 
         hvsr_matrix = np.ma.empty((length, good_length))

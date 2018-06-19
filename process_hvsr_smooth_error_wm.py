@@ -17,14 +17,10 @@ from sklearn.covariance import GraphLassoCV, ledoit_wolf
 import numpy.ma as ma
 from konno_ohmachi_smoothing import calculate_smoothing_matrix_linlog 
 
-CLIP_TO_FREQ = False
-RESAMPLE_FREQ = True
-APPLY_RESAMPLE_BIAS = False
-APPLY_SMOOTHING_VARIANCE = True
 
 if (len(sys.argv) < 10):
 	print "Usage: python htov.py method /path/to/miniSEED/ nfrequencies f_min f_max window_length ko_bandwidth log|lin prefix w0"
-	print "Method is 'single taper', 'st, 'cwtmlpy', 'cwtlog'"
+	print "Method is 'cwtlog'"
 	exit(0)
 
 nfrequencies = int(sys.argv[3])
@@ -38,16 +34,10 @@ if len(sys.argv) > 10:
 	w0 = int(sys.argv[10])
 else:
 	w0 = 8
-spectra_method=sys.argv[1]
+spectra_method='cwtlog' #sys.argv[1]
 dr = sys.argv[2]
 demean_hvsr = False
 shift_down = False
-
-if sampling_type == 'linear' or spectra_method=='cwtlog':
-	RESAMPLE_FREQ = False
-else:
-	RESAMPLE_FREQ = True
-
 
 dr_out = os.path.dirname(os.path.realpath(__file__))+'/'+runprefix+'/';
 if not os.path.exists(dr_out):
@@ -73,17 +63,6 @@ freq_bins = None
 logfreq_extended = None
 logfreq = None
 
-if RESAMPLE_FREQ:
-	# generate frequencies vector
-	logfreq_extended = np.zeros(nfrequencies+2)
-	c = (1.0/(nfrequencies-1))*np.log10(finalfreq/initialfreq)
-	for i in xrange(nfrequencies+2):
-		logfreq_extended[i] = initialfreq*(10.0 ** (c*(i-1)))
-	logfreq = logfreq_extended[1:-1]
-	print "Logarithmically interpolated frequency bins"
-	print logfreq
-	freq_bins = logfreq
-
 (master_curve, hvsr_freq, error, hvsr_matrix) = batch.create_HVSR(st,spectra_method=spectra_method,
 						  spectra_options={'time_bandwidth':3.5,
 								   'number_of_tapers':None,
@@ -104,99 +83,44 @@ highest_freq = finalfreq #50.0
 def find_nearest_idx(array,value):
 	return (np.abs(array-value)).argmin()
 
-print hvsr_matrix
-if demean_hvsr:
-	mean_log_hvsr = np.log(hvsr_matrix).mean(axis=1)
-	np.savetxt(saveprefix+'_mean_log_hv.txt',mean_log_hvsr)
-	print "Mean log hvsr mean"
-	print mean_log_hvsr.mean();
-	print "Mean log hvsr std dev"
-	print mean_log_hvsr.std();
-	hvsr_matrix = np.exp(np.log(hvsr_matrix) - mean_log_hvsr[:,None])
-elif shift_down:
-	#idea is to balance max hv with min hv in log domain.
-	u = hvsr_matrix.max()
-	v = hvsr_matrix.min()
-	downshift = 0.5 * (u + v - math.sqrt((u+v)**2 - 4*(u*v-1)))
-	print "Down shift"
-	print downshift
-	hvsr_matrix -= downshift
-	
-print "HVSR matrix"
-print hvsr_matrix
-
 master_curve_full = np.exp(np.log(hvsr_matrix).mean(axis=0))
 std_full = (np.log(hvsr_matrix[:][:]) - np.log(master_curve))
 
-if RESAMPLE_FREQ:
-	# interpolate to log spacing
-	print "Number of windows computed = " + str(nwindows)
-	interp_hvsr_matrix = np.empty((nwindows, nfrequencies))
-	interpolation_variance = np.empty((nwindows,nfrequencies))
-	sm_matrix = calculate_smoothing_matrix_linlog(logfreq,hvsr_freq,ko_bandwidth)
-	deltalin = hvsr_freq[1]-hvsr_freq[0]
-	deltalogb = 0.5 * (logfreq_extended[1:] + logfreq_extended[:-1])
-	deltalog = deltalogb[1:] - deltalogb[:-1] # same dimensions as logfreq
-	print "Max freq = " + str(hvsr_freq[-1])
-	for i in xrange(nwindows):
-		# use k-o smoothing to generate "mean" h/v curve
-		interp_hvsr_matrix[i,:] = np.exp(np.dot(sm_matrix,np.log(hvsr_matrix[i,:])))
-	master_curve = np.exp(np.log(interp_hvsr_matrix).mean(axis=0))
-	hvsr_freq = logfreq
-	v1 = sm_matrix.sum(axis=1) # nfrequencies x 1
-	v2 = (sm_matrix**2).sum(axis=1) # nfrequencies x 1
-	# for each interpolated frequency bin, compute sample error of weighted mean (i.e. interpolated value)
-	for j in xrange(logfreq.shape[0]):
-		# compute variance as squared error to interpolated spectrum value
-		#interp_hvsr_matrix_var[i,:] = np.power(np.log(interp_hvsr_matrix[i,:]/hv_int),2)
-		# compute sample error of weighted mean
-		demeaned = np.log(hvsr_matrix) - np.log(master_curve[j])
-		print demeaned.shape
-		interpolation_variance[:,j] = np.dot(sm_matrix[j,:],demeaned.T ** 2) / (v1[j] - (v2[j]/v1[j]))
-		#interpolation_variance[:,j] = (sm_matrix[j,:].T,np.dot(demeaned.T,demeaned)).sum(axis=0) / (v1[j] - (v2[j]/v1[j]))
-		#interpolation_variance[:,j] = np.dot(sm_matrix[j,:],np.dot(np.log(hvsr_matrix) - np.log(master_curve[j]),(np.log(hvsr_matrix) - np.log(master_curve[j])).T)) / (v1[j] - (v2[j]/v1[j]))
-		print ("Computed interpolation variance for frequency index " + str(j))
-	#master_curve_binlogvar = (interpolation_variance).sum(axis=0) / float(nwindows - 1)
-	master_curve_binlogvar = np.dot(interpolation_variance.T,interpolation_variance) / float(nwindows - 1)
-	resample_bias = np.diag(master_curve_binlogvar)
-	smoothing_variance_operator = sm_matrix ** 2 # currently unused
-	std = (np.log(interp_hvsr_matrix[:][:]) - np.log(master_curve))
-	stackerror = np.dot(std.T,std) / float(nwindows-1)
-	error = stackerror + master_curve_binlogvar
-	#diagerr = np.sqrt(std.var(axis=0))
-	diagerr = np.sqrt(np.diag(error))
-	# errormag doesn't include interpolation variance
-	errormag = np.zeros(nwindows)
-	for i in xrange(nwindows):	
-		errormag[i] = np.dot(std[i,:],std[i,:].T)
-else:
-	interp_hvsr_matrix = hvsr_matrix
-	nfrequencies = hvsr_freq.shape[0]
-	initialfreq = hvsr_freq[0]
-	finalfreq = hvsr_freq[nfrequencies-1]
-	# for non-resample case
-	master_curve_binlogvar = np.zeros(hvsr_freq.shape[0])
-	resample_bias = np.ones(nfrequencies)
-	master_curve = master_curve_full
-	std = std_full
-	diagerr = np.sqrt(std.var(axis=0))
-	errormag = np.zeros(nwindows)
-	for i in xrange(nwindows):	
-		errormag[i] = np.dot(std[i,:],std[i,:].T)
-	error = np.dot(std.T,std) / float(nwindows-1) # + np.diag(master_curve_binlogvar)
-	#sp_model = GraphLassoCV()
-	#sp_model.fit(std)
-	#sp_cov = sp_model.covariance_# + np.diag(master_curve_binlogvar)
-	#sp_prec = sp_model.precision_# + 1.0/np.diag(master_curve_binlogvar)
-
-
-
-if CLIP_TO_FREQ:
-	lclip = find_nearest_idx(hvsr_freq,lowest_freq)
-	uclip = find_nearest_idx(hvsr_freq,highest_freq)
-	master_curve=master_curve[lclip:uclip]
-	hvsr_freq=hvsr_freq[lclip:uclip]
-	error=error[lclip:uclip,lclip:uclip]
+# interpolate to log spacing
+print "Number of windows computed = " + str(nwindows)
+smooth_hvsr_matrix = np.empty((nwindows, nfrequencies))
+smoothing_variance = np.empty((nwindows,nfrequencies))
+sm_matrix = calculate_smoothing_matrix(hvsr_freq,ko_bandwidth)
+print "Max freq = " + str(hvsr_freq[-1])
+for i in xrange(nwindows):
+	# use k-o smoothing to generate "mean" h/v curve
+	#smooth_hvsr_matrix[i,:] = np.dot(sm_matrix,hvsr_matrix[i,:])
+	smooth_hvsr_matrix[i,:] = np.exp(np.dot(sm_matrix,np.log(hvsr_matrix[i,:])))
+master_curve = np.exp(np.log(smooth_hvsr_matrix).mean(axis=0))
+v1 = sm_matrix.sum(axis=1) # nfrequencies x 1
+v2 = (sm_matrix**2).sum(axis=1) # nfrequencies x 1
+# for each interpolated frequency bin, compute sample error of weighted mean (i.e. interpolated value)
+for j in xrange(hvsr_freq.shape[0]):
+	# compute variance as squared error to interpolated spectrum value
+	#smooth_hvsr_matrix_var[i,:] = np.power(np.log(smooth_hvsr_matrix[i,:]/hv_int),2)
+	# compute sample error of weighted mean
+	demeaned = np.log(hvsr_matrix) - np.log(master_curve[j])
+	print demeaned.shape
+	smoothing_variance[:,j] = np.dot(sm_matrix[j,:],demeaned.T ** 2) / (v1[j] - (v2[j]/v1[j]))
+	print ("Computed smoothing variance for frequency index " + str(j))
+#master_curve_binlogvar = (smoothing_variance).sum(axis=0) / float(nwindows - 1)
+master_curve_binlogvar = np.dot(smoothing_variance.T,smoothing_variance) / float(nwindows - 1)
+resample_bias = np.diag(master_curve_binlogvar)
+smoothing_variance_operator = sm_matrix ** 2 # currently unused
+std = (np.log(smooth_hvsr_matrix[:][:]) - np.log(master_curve))
+stackerror = np.dot(std.T,std) / float(nwindows-1)
+error = stackerror + master_curve_binlogvar
+#diagerr = np.sqrt(std.var(axis=0))
+diagerr = np.sqrt(np.diag(error))
+# errormag doesn't include interpolation variance
+errormag = np.zeros(nwindows)
+for i in xrange(nwindows):	
+	errormag[i] = np.dot(std[i,:],std[i,:].T)
 
 print "Master curve shape: " + str(master_curve.shape)
 print master_curve
