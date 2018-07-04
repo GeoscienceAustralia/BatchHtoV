@@ -18,33 +18,32 @@ import numpy.ma as ma
 from konno_ohmachi_smoothing import calculate_smoothing_matrix_linlog 
 
 
-if (len(sys.argv) < 13):
-	print "Usage: python htov.py method /path/to/miniSEED/ nfrequencies f_min f_max window_length ko_bandwidth log|lin prefix w0 bpf_min bpf_max"
-	print "Method is 'cwtlog'"
+if (len(sys.argv) < 9):
+	print "Usage: python htov.py method /path/to/miniSEED/ nfrequencies f_min f_max window_length ko_bandwidths log|lin prefix w0"
+	print "Method is 'raydeccwtlog'"
 	exit(0)
 
-FOI=True
-
-nfrequencies = int(sys.argv[3])
-initialfreq = float(sys.argv[4])
-finalfreq = float(sys.argv[5])
-windowlength = float(sys.argv[6])
-ko_bandwidths = [float(kob) for kob in sys.argv[7].split(',')]
-ko_bandwidthstr = ' '.join([kob for kob in sys.argv[7].split(',')])
+spectra_method='raydeccwtlog2' #sys.argv[1]
+dr = sys.argv[1]
+nfrequencies = int(sys.argv[2])
+initialfreq = float(sys.argv[3])
+finalfreq = float(sys.argv[4])
+windowlength = float(sys.argv[5])
+ko_bandwidths = [float(kob) for kob in sys.argv[6].split(',')]
+ko_bandwidthstr = ' '.join([kob for kob in sys.argv[6].split(',')])
 nbws = len(ko_bandwidths)
-sampling_type = sys.argv[8]
-runprefix = sys.argv[9]
-w0 = int(sys.argv[10]) # 8
-spectra_method='cwtlog' #sys.argv[1]
-dr = sys.argv[2]
-bpf_min = float(sys.argv[11]) 
-bpf_max = float(sys.argv[12]) 
-demean_hvsr = False
-shift_down = False
+sampling_type = sys.argv[7]
+runprefix = sys.argv[8]
+if len(sys.argv) > 9:
+	w0 = int(sys.argv[9])
+else:
+	w0 = 16
 
 dr_out = os.path.dirname(os.path.realpath(__file__))+'/'+runprefix+'/';
 if not os.path.exists(dr_out):
 	os.makedirs(dr_out)
+
+saveprefix = dr_out+runprefix+(spectra_method.replace(' ','_'))
 
 st = Stream()
 if dr[-1]=='/':
@@ -56,60 +55,13 @@ else:
 	st += read(dr)
 
 st.merge(method=1,fill_value=0)
-#print "Filtering using bandpass zerophase in range " + str((bpf_min,bpf_max))
-#st.filter('bandpass',freqmin=bpf_min,freqmax=bpf_max,corners=8,zerophase=True)
-
 #st = st.slice(st[0].stats.starttime, st[0].stats.starttime+28800)
 print st
 print "stream length = " + str(len(st))
 
-def logfreqbins(nfreq,ifreq,ffreq):
-	logfreq_extended = np.zeros(nfreq+2)
-	c = (1.0/(nfreq-1))*np.log10(ffreq/ifreq)
-	for i in xrange(nfreq+2):
-		logfreq_extended[i] = ifreq*(10.0 ** (c*(i-1)))
-	return logfreq_extended[1:-1]
-
 freq_bins = None
-
-if FOI==True:
-	logfreqs = logfreqbins(200,initialfreq,finalfreq)
-	(prelim_curve_logfreq, prelim_hvsr_freq, prelim_error, prelim_hvsr_matrix) = batch.create_HVSR(st,spectra_method='cwtlog',
-						  spectra_options={'time_bandwidth':3.5,
-								   'number_of_tapers':None,
-								   'quadratic':False,
-								   'adaptive':True,'nfft':None,
-								   #'taper':'blackman'},
-								   'taper':'nuttall'},
-                                                                  #smoothing='konno-ohmachi',smoothing_constant=40,
-                                                                  smoothing=None,
-                                                                  master_curve_method='median',cutoff_value=0.0,
-                                                                  #window_length=windowlength,
-                                                                  window_length=1000,
-                                                                  f_min=initialfreq,f_max=finalfreq,frequencies=logfreqs,w0=w0)
-	# search for maxima and minima
-	def turning_points(v):
-		diff = v[1:] - v[:-1]
-		tps = np.flatnonzero(diff[1:]*diff[:-1] < 0)
-		return np.array(tps)+1
-	#tp = turning_points(prelim_curve)
-	# interpolate to log frequencies
-	logfreqs = logfreqbins(1000,initialfreq,finalfreq)
-	#linlog_sm_matrix = calculate_smoothing_matrix_linlog(logfreqs,prelim_hvsr_freq,40)
-	#prelim_curve_logfreq = np.dot(linlog_sm_matrix,prelim_curve)
-	tpu = scipy.signal.argrelextrema(prelim_curve_logfreq,np.greater,order=1)
-	tpd = scipy.signal.argrelextrema(prelim_curve_logfreq,np.less,order=1)
-	tpi = np.concatenate((tpu,tpd),axis=1).flatten()
-	tpi.sort()
-	# get frequencies for these indices
-	freq_bins = prelim_hvsr_freq[tpi.astype(int)]
-	#tp = tp[np.logical_and(tp >= initialfreq, tp <= finalfreq)]
-	freq_bins = freq_bins[(freq_bins >= initialfreq) & (freq_bins <= finalfreq)]
-	print "Using frequency bins"
-	print freq_bins
-	np.savetxt('freqbins.txt',freq_bins)
-	nfrequencies = freq_bins.shape[0]
-	
+logfreq_extended = None
+logfreq = None
 
 (master_curve, hvsr_freq, error, hvsr_matrix) = batch.create_HVSR(st,spectra_method=spectra_method,
 						  spectra_options={'time_bandwidth':3.5,
@@ -126,12 +78,9 @@ if FOI==True:
 
 nwindows = len(hvsr_matrix)
 
-lowest_freq = initialfreq #0.3
-highest_freq = finalfreq #50.0
-def find_nearest_idx(array,value):
-	return (np.abs(array-value)).argmin()
-
 master_curve_full = np.exp(np.log(hvsr_matrix).mean(axis=0))
+error = np.sqrt(np.sum((np.log(hvsr_matrix[:][:]) - np.log(master_curve)) ** 2,axis=0) / float(nwindows-1))
+
 std_full = (np.log(hvsr_matrix[:][:]) - np.log(master_curve))
 
 dhvsr_freq=0.5*(hvsr_freq[1:]+hvsr_freq[:-1])
@@ -285,3 +234,4 @@ for ko_bandwidth in ko_bandwidths:
 np.savetxt(saveprefix+'allhv.txt',all_hvsr, header=ko_bandwidthstr, comments='')
 np.savetxt(saveprefix+'alldhv.txt',all_dhvsr, header=ko_bandwidthstr, comments='')
 np.savetxt(saveprefix+'allddhv.txt',all_ddhvsr, header=ko_bandwidthstr, comments='')
+

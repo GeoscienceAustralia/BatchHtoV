@@ -112,6 +112,11 @@ def getAreasWithinThreshold(c_funct, threshold, min_width, feather=0):
         areas.append((start + feather, x_values[-1] - feather))
     return np.array(areas)
 
+def icwt_band(tfa, delta, freq, w0):
+    fperiods = np.array([1/freq])
+    scales = wave.scales_from_fourier(fperiods, 'morlet', w0)
+    data = wave.cwt(tfa, delta, scales, 'morlet', w0)
+    return data
 
 def cwt_TFA(data, delta, nf, f_min=0, f_max=0, w0=8, useMlpy=True, freq_spacing='log', freqs=None):
     """

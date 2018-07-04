@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #PBS -P vy72 
 #PBS -q express 
-#PBS -l walltime=3:00:00
-#PBS -l mem=8GB
+#PBS -l walltime=0:30:00
+#PBS -l mem=128GB
 #PBS -l jobfs=1GB
 #PBS -l ncpus=1
 #PBS -l software=make 
@@ -12,5 +12,7 @@
 export PATH=/g/data/ha3/lsd547/miniconda2/bin:$PATH
 export PYTHONPATH=/g/data/ha3/lsd547/miniconda2/:/g/data/ha3/lsd547/mlpy/lib/python2.7/site-packages/:/g/data/ha3/lsd547/stockwell_transform/lib/python2.7/site-packages/
 source activate seismicpy27
-python runkobatch.py 'single taper' '/g/data/ha3/Passive/OvernightData/STAVELY/S04PS/Seismometer_data/S0400/S0400miniSEED/' 70 0.3 32.0 S0400_fft18
-#python runkobatch.py 'cwt2' '/g/data/ha3/Passive/OvernightData/STAVELY/S04PS/Seismometer_data/S0400/S0400miniSEED/' 70 0.3 32.0 S0400_fft11
+INDIR=/g/data/ha3/Passive/OvernightData/LakeGeorge/LG6to11-3_ANUREC/S00/miniSEED/
+#python runkobatch_nolasso.py 'single taper' $INDIR 100 0.002 50.0 1000 C354_3
+#python process_hvsr_interp_error.py 'single taper' $INDIR 100 0.01 50.0 1000 50 C354_10
+python process_hvsr_interp_error.py 'cwtlog' $INDIR 100 0.01 50.0 1000 50 log C354_cwt_001_50

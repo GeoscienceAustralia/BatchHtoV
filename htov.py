@@ -13,6 +13,7 @@ from copy import deepcopy
 from math import ceil
 from mtspec import mtspec, sine_psd
 import numpy as np
+np.set_printoptions(threshold='nan')
 #from obspy.core.util import scoreatpercentile as quantile
 from scipy.stats import scoreatpercentile as quantile
 from obspy.signal.filter import highpass, lowpass, bandpass
@@ -27,6 +28,8 @@ import mlpy.wavelet as wave
 
 from utils import *
 from konno_ohmachi_smoothing import calculate_smoothing_matrix
+
+import sys
 
 
 def resampleFilterAndCutTraces(stream, resampling_rate, lowpass_value,
@@ -516,6 +519,7 @@ def calculateHVSR(stream, intervals, window_length, method, options,
                     #h_numer = 0.5 * (hmax_neg + hmax_pos)
                     h_numer = np.maximum(hmax_neg,hmax_pos)
                     v_numer = vmax
+                    # likely incorrect. We should not sum because this biases to higher amplitudes.
                     h_spec[findex] = np.sum(h_numer) / h_numer.shape[0]
                     v_spec[findex] = np.sum(v_numer) / v_numer.shape[0]
             # Apply smoothing.
@@ -539,6 +543,212 @@ def calculateHVSR(stream, intervals, window_length, method, options,
             num_good_intervals += 1
         # Cut the hvsr matrix.
         hvsr_matrix = hvsr_matrix[0:num_good_intervals, :]
+    # Use a mlpy Morlet CWT and isolate via the vertical spectrum maxima
+    elif method == 'raydeccwtlog2':
+        good_length = bin_samples
+
+        hvsr_matrix = np.ma.empty((length, good_length))
+        num_good_intervals = 0
+        for _i, interval in enumerate(intervals):
+            if message_function:
+                message_function('Calculating HVSR %i of %i...' % \
+                                 (_i+1, length))
+            v = [_j for _j, trace in enumerate(stream) if \
+                 trace.stats.orientation == 'vertical']
+            h = [_j for _j, trace in enumerate(stream) if \
+                 trace.stats.orientation == 'horizontal']
+            v = stream[v[0]].data[interval[0]: interval[0] + \
+                               window_length]
+            h1 = stream[h[0]].data[interval[0]: interval[0] + \
+                                window_length]
+            h2 = stream[h[1]].data[interval[0]: interval[0] + \
+                                window_length]
+            # Calculate the spectra.
+            if w0==None:
+		w0 = 8 # 16
+            v_cwt, v_freq, v_scales    = cwt_TFA(v,  stream[0].stats.delta, good_length, f_min, f_max, w0=w0, freq_spacing='log',freqs=frequencies)
+            h1_cwt, h1_freq, h1_scales = cwt_TFA(h1, stream[0].stats.delta, good_length, f_min, f_max, w0=w0, freq_spacing='log',freqs=frequencies)
+            h2_cwt, h2_freq, h2_scales = cwt_TFA(h2, stream[0].stats.delta, good_length, f_min, f_max, w0=w0, freq_spacing='log',freqs=frequencies)
+            # Convert to spectrum via vertical maxima search
+            #v_cwt = np.abs(v_cwt)
+            hv_spec = np.ma.array(np.zeros(v_freq.shape[0]),mask=np.ones(v_freq.shape[0]))
+
+            for findex in xrange(v_freq.shape[0]):
+
+                f = v_freq[findex]
+                rayleighDelay = int(0.25 * (1.0/f) * stream[0].stats.sampling_rate + 0.5) # the + 0.5 at the end is to round to nearest for integer reference
+
+                # exclude cone of influence from regions searched for peaks.
+                deltalen = int(stream[0].stats.sampling_rate * 10.0/f)
+                #startIdx = rayleighDelay if (rayleighDelay>cois[findex]) else cois[findex]
+                #startIdx = cois[findex] + rayleighDelay
+                #endIdx = v_cwt.shape[1] - cois[findex] - deltalen - 1
+                #extrema = argrelextrema(v_cwt[findex,
+                #                        startIdx:endIdx], np.greater)
+                #e = extrema[0]
+
+                vbpf = np.real(icwt_band(v_cwt[findex,:], stream[0].stats.delta, f, w0)).flatten()
+                h1bpf = np.real(icwt_band(h1_cwt[findex,:], stream[0].stats.delta, f, w0)).flatten()
+                h2bpf = np.real(icwt_band(h2_cwt[findex,:], stream[0].stats.delta, f, w0)).flatten()
+                if np.isnan(vbpf).any() or np.isnan(h1bpf).any() or np.isnan(h2bpf).any():
+                    print "NAN detected in icwt"
+                    sys.exit()
+
+                # find all zero crossings in vertical
+                e = np.where(np.diff(np.sign(vbpf)) > 0)[0]
+                #print "VBPF " + str(vbpf)
+                #print "Zero crossings: " + str(e)
+
+                if e.shape[0] == 0:
+                    print "No zero-crossings found for frequency " + str(f)
+                    hv_spec[findex] = np.ma.masked
+                else:
+		    vfs = np.zeros(deltalen)
+		    hfs = np.zeros(deltalen)
+                    for e_ in xrange(e.shape[0]):
+                        ei = e[e_]
+                        if ei < rayleighDelay or ei + deltalen >= vbpf.shape[0]:
+                            continue
+                        hei = ei - rayleighDelay
+                        #print "vmax at " + str(ei) + " with delayed h index " + str(hei) + " search idx = " + str((startIdx,endIdx))
+                        # buffer
+                        vfbi = vbpf[ei:ei+deltalen]
+                        h1fbi = h1bpf[hei:hei+deltalen] 
+                        h2fbi = h2bpf[hei:hei+deltalen] 
+                        # solve for azimuth
+                        azimuth = math.atan2(np.sum(vfbi*h1fbi),np.sum(vfbi*h2fbi))
+                        hfbi = math.sin(azimuth)*h1fbi + math.cos(azimuth)*h2fbi
+                        #print "Azimuth = " + str(azimuth) + " sin(a) = " + str(math.sin(azimuth)) + " cos(a) = " +str(math.cos(azimuth))
+                        corweight = np.sum(vfbi*hfbi)/math.sqrt(np.sum(vfbi**2)*np.sum(hfbi**2)) 
+                        #print "Correlation weight = " + str(corweight)
+                        if corweight > 0.4:
+                            vfs+=vfbi * (corweight ** 2)
+                            hfs+=hfbi * (corweight ** 2)
+                        #print "f = " + str(f) + " h = " + str(np.sum((hfbi * (corweight ** 2)) ** 2)) + " v = " + str(np.sum((vfbi * (corweight ** 2)) ** 2)) + " hv = " + str(np.sqrt(np.sum((hfbi * (corweight ** 2)) ** 2)/np.sum((vfbi * (corweight ** 2)) ** 2)))
+
+                    hv_spec[findex] = math.sqrt(np.sum(hfs**2) / np.sum(vfs**2))
+                    #print "hv("+str(f)+") = " + str(hv_spec[findex])
+                    del vfs
+                    del hfs
+                    
+            if _i == 0:
+                good_freq = v_freq
+                good_length = v_freq.shape[0]
+                # Create the matrix that will be used to store the single
+                # spectra.
+                hvsr_matrix = np.zeros((length, good_length))
+            # Store it into the matrix if it has the correct length and contains no NaNs
+            if np.all(np.isfinite(hv_spec)):
+                hvsr_matrix[num_good_intervals, 0:hv_spec.shape[0]] = hv_spec
+                num_good_intervals += 1
+        # Cut the hvsr matrix.
+        hvsr_matrix = hvsr_matrix[0:num_good_intervals, :]
+    # Use a mlpy Morlet CWT and isolate via the vertical spectrum maxima
+    elif method == 'raydeccwtlog':
+        good_length = bin_samples
+
+        hvsr_matrix = np.ma.empty((length, good_length))
+        num_good_intervals = 0
+        for _i, interval in enumerate(intervals):
+            if message_function:
+                message_function('Calculating HVSR %i of %i...' % \
+                                 (_i+1, length))
+            v = [_j for _j, trace in enumerate(stream) if \
+                 trace.stats.orientation == 'vertical']
+            h = [_j for _j, trace in enumerate(stream) if \
+                 trace.stats.orientation == 'horizontal']
+            v = stream[v[0]].data[interval[0]: interval[0] + \
+                               window_length]
+            h1 = stream[h[0]].data[interval[0]: interval[0] + \
+                                window_length]
+            h2 = stream[h[1]].data[interval[0]: interval[0] + \
+                                window_length]
+            # Calculate the spectra.
+            if w0==None:
+		w0 = 8 # 16
+            v_cwt, v_freq, v_scales    = cwt_TFA(v,  stream[0].stats.delta, good_length, f_min, f_max, w0=w0, freq_spacing='log',freqs=frequencies)
+            h1_cwt, h1_freq, h1_scales = cwt_TFA(h1, stream[0].stats.delta, good_length, f_min, f_max, w0=w0, freq_spacing='log',freqs=frequencies)
+            h2_cwt, h2_freq, h2_scales = cwt_TFA(h2, stream[0].stats.delta, good_length, f_min, f_max, w0=w0, freq_spacing='log',freqs=frequencies)
+            # Convert to spectrum via vertical maxima search
+            v_cwt = np.abs(v_cwt)
+            hv_spec = np.ma.array(np.zeros(v_freq.shape[0]),mask=np.ones(v_freq.shape[0]))
+            if 'v_amps' not in locals():
+		v_amps = [[] for i in xrange(v_freq.shape[0])]
+		h_amps = [[] for i in xrange(v_freq.shape[0])]
+		corweights = [[] for i in xrange(v_freq.shape[0])]
+            # Compute cone of influence for morlet wavelets (Torrence and Compo 1998)
+            # COI = sqrt(2.) * s
+            # , where s is wavelet scale.
+            cois = np.int_(np.floor(np.sqrt(2.)*v_scales*stream[0].stats.sampling_rate + 0.5))
+            for findex in xrange(v_freq.shape[0]):
+
+                f = v_freq[findex]
+                rayleighDelay = int(0.25 * (1.0/f) * stream[0].stats.sampling_rate + 0.5) # the + 0.5 at the end is to round to nearest for integer reference
+
+                # exclude cone of influence from regions searched for peaks.
+                #deltalen = int(max(10.0,f)/f)
+                deltalen = int(stream[0].stats.sampling_rate * 10.0/f)
+                #startIdx = rayleighDelay if (rayleighDelay>cois[findex]) else cois[findex]
+                startIdx = cois[findex] + rayleighDelay
+                endIdx = v_cwt.shape[1] - cois[findex] - deltalen - 1
+                extrema = argrelextrema(v_cwt[findex,
+                                        startIdx:endIdx], np.greater)
+                e = extrema[0]
+                if e.shape[0] == 0:
+                    print "No peaks found for frequency " + str(f)
+                    hv_spec[findex] = np.ma.masked
+                else:
+                    #hv_f = np.zeros(e.shape[0])
+                    for e_ in xrange(e.shape[0]):
+                        ei = e[e_] + startIdx
+                        hei = ei - rayleighDelay
+                        #print "vmax at " + str(ei) + " with delayed h index " + str(hei) + " search idx = " + str((startIdx,endIdx))
+                        v_amp = np.abs(v_cwt[findex,ei]) #** 2
+                        h1_amp = np.abs(h1_cwt[findex,hei]) #** 2
+                        h2_amp = np.abs(h2_cwt[findex,hei]) #** 2
+                        # buffer
+                        vfbi = np.abs(v_cwt[findex,ei:ei+deltalen]) #** 2
+                        h1fbi = np.abs(h1_cwt[findex,hei:hei+deltalen]) #** 2
+                        h2fbi = np.abs(h2_cwt[findex,hei:hei+deltalen]) #** 2
+                        # solve for azimuth
+                        azimuth = math.atan2(np.sum(vfbi*h1fbi),np.sum(vfbi*h2fbi))
+                        hfbi = math.sin(azimuth)*h1fbi + math.cos(azimuth)*h2fbi
+                        h_amp =  math.sin(azimuth)*h1_amp + math.cos(azimuth)*h2_amp
+                        corweight = np.sum(vfbi*hfbi)/math.sqrt(np.sum(vfbi**2)*np.sum(hfbi**2)) 
+                        v_amps[findex].append(v_amp)
+                        h_amps[findex].append(h_amp)
+                        corweights[findex].append(corweight)
+                        #hv_f[e_] = corweight **2 * h_amp/v_amp
+                    
+                    # probably wrong
+                    #hv_spec[findex] = hv_f.sum() / hv_f.shape[0]
+            if _i == 0:
+                good_freq = v_freq
+                good_length = v_freq.shape[0]
+                # Create the matrix that will be used to store the single
+                # spectra.
+                hvsr_matrix = np.zeros((length, good_length))
+            # Store it into the matrix if it has the correct length.
+            #hvsr_matrix[num_good_intervals, 0:hv_spec.shape[0]] = hv_spec
+            num_good_intervals += 1
+        # Cut the hvsr matrix.
+        hvsr_matrix = hvsr_matrix[0:num_good_intervals, :]
+        master_curve = np.zeros(v_freq.shape[0])
+        error = np.zeros(v_freq.shape[0])
+        for findex in xrange(v_freq.shape[0]):
+            #print v_freq[findex]
+            cws = np.array(corweights[findex])
+            #print cws
+            # for a weighted mean, normalise weights to sum to 1
+            cws = cws ** 2
+            cws /= cws.sum()
+            V1 = 1
+            V2 = np.sum(cws ** 2)
+            hv_arr  = np.log(np.array(h_amps[findex]) / np.array(v_amps[findex]))
+            #print hv_arr
+            master_curve[findex] = np.sum(cws * hv_arr)
+            error[findex] = math.sqrt(np.sum(cws*((hv_arr - master_curve[findex])**2))/(V1 - (V2/V1))) # std of weighted mean
+        return hvsr_matrix, good_freq, len(hvsr_matrix), master_curve, error
     # Use a mlpy Morlet CWT and isolate via the vertical spectrum maxima
     elif method == 'cwtmlpy':
         good_length = bin_samples

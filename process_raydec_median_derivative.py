@@ -18,33 +18,32 @@ import numpy.ma as ma
 from konno_ohmachi_smoothing import calculate_smoothing_matrix_linlog 
 
 
-if (len(sys.argv) < 13):
-	print "Usage: python htov.py method /path/to/miniSEED/ nfrequencies f_min f_max window_length ko_bandwidth log|lin prefix w0 bpf_min bpf_max"
-	print "Method is 'cwtlog'"
+if (len(sys.argv) < 9):
+	print "Usage: python htov.py method /path/to/miniSEED/ nfrequencies f_min f_max window_length ko_bandwidths log|lin prefix w0"
+	print "Method is 'raydeccwtlog'"
 	exit(0)
 
-FOI=True
-
-nfrequencies = int(sys.argv[3])
-initialfreq = float(sys.argv[4])
-finalfreq = float(sys.argv[5])
-windowlength = float(sys.argv[6])
-ko_bandwidths = [float(kob) for kob in sys.argv[7].split(',')]
-ko_bandwidthstr = ' '.join([kob for kob in sys.argv[7].split(',')])
+spectra_method='raydeccwtlog2' #sys.argv[1]
+dr = sys.argv[1]
+nfrequencies = int(sys.argv[2])
+initialfreq = float(sys.argv[3])
+finalfreq = float(sys.argv[4])
+windowlength = float(sys.argv[5])
+ko_bandwidths = [float(kob) for kob in sys.argv[6].split(',')]
+ko_bandwidthstr = ' '.join([kob for kob in sys.argv[6].split(',')])
 nbws = len(ko_bandwidths)
-sampling_type = sys.argv[8]
-runprefix = sys.argv[9]
-w0 = int(sys.argv[10]) # 8
-spectra_method='cwtlog' #sys.argv[1]
-dr = sys.argv[2]
-bpf_min = float(sys.argv[11]) 
-bpf_max = float(sys.argv[12]) 
-demean_hvsr = False
-shift_down = False
+sampling_type = sys.argv[7]
+runprefix = sys.argv[8]
+if len(sys.argv) > 9:
+	w0 = int(sys.argv[9])
+else:
+	w0 = 16
 
 dr_out = os.path.dirname(os.path.realpath(__file__))+'/'+runprefix+'/';
 if not os.path.exists(dr_out):
 	os.makedirs(dr_out)
+
+saveprefix = dr_out+runprefix+(spectra_method.replace(' ','_'))
 
 st = Stream()
 if dr[-1]=='/':
@@ -56,60 +55,13 @@ else:
 	st += read(dr)
 
 st.merge(method=1,fill_value=0)
-#print "Filtering using bandpass zerophase in range " + str((bpf_min,bpf_max))
-#st.filter('bandpass',freqmin=bpf_min,freqmax=bpf_max,corners=8,zerophase=True)
-
 #st = st.slice(st[0].stats.starttime, st[0].stats.starttime+28800)
 print st
 print "stream length = " + str(len(st))
 
-def logfreqbins(nfreq,ifreq,ffreq):
-	logfreq_extended = np.zeros(nfreq+2)
-	c = (1.0/(nfreq-1))*np.log10(ffreq/ifreq)
-	for i in xrange(nfreq+2):
-		logfreq_extended[i] = ifreq*(10.0 ** (c*(i-1)))
-	return logfreq_extended[1:-1]
-
 freq_bins = None
-
-if FOI==True:
-	logfreqs = logfreqbins(200,initialfreq,finalfreq)
-	(prelim_curve_logfreq, prelim_hvsr_freq, prelim_error, prelim_hvsr_matrix) = batch.create_HVSR(st,spectra_method='cwtlog',
-						  spectra_options={'time_bandwidth':3.5,
-								   'number_of_tapers':None,
-								   'quadratic':False,
-								   'adaptive':True,'nfft':None,
-								   #'taper':'blackman'},
-								   'taper':'nuttall'},
-                                                                  #smoothing='konno-ohmachi',smoothing_constant=40,
-                                                                  smoothing=None,
-                                                                  master_curve_method='median',cutoff_value=0.0,
-                                                                  #window_length=windowlength,
-                                                                  window_length=1000,
-                                                                  f_min=initialfreq,f_max=finalfreq,frequencies=logfreqs,w0=w0)
-	# search for maxima and minima
-	def turning_points(v):
-		diff = v[1:] - v[:-1]
-		tps = np.flatnonzero(diff[1:]*diff[:-1] < 0)
-		return np.array(tps)+1
-	#tp = turning_points(prelim_curve)
-	# interpolate to log frequencies
-	logfreqs = logfreqbins(1000,initialfreq,finalfreq)
-	#linlog_sm_matrix = calculate_smoothing_matrix_linlog(logfreqs,prelim_hvsr_freq,40)
-	#prelim_curve_logfreq = np.dot(linlog_sm_matrix,prelim_curve)
-	tpu = scipy.signal.argrelextrema(prelim_curve_logfreq,np.greater,order=1)
-	tpd = scipy.signal.argrelextrema(prelim_curve_logfreq,np.less,order=1)
-	tpi = np.concatenate((tpu,tpd),axis=1).flatten()
-	tpi.sort()
-	# get frequencies for these indices
-	freq_bins = prelim_hvsr_freq[tpi.astype(int)]
-	#tp = tp[np.logical_and(tp >= initialfreq, tp <= finalfreq)]
-	freq_bins = freq_bins[(freq_bins >= initialfreq) & (freq_bins <= finalfreq)]
-	print "Using frequency bins"
-	print freq_bins
-	np.savetxt('freqbins.txt',freq_bins)
-	nfrequencies = freq_bins.shape[0]
-	
+logfreq_extended = None
+logfreq = None
 
 (master_curve, hvsr_freq, error, hvsr_matrix) = batch.create_HVSR(st,spectra_method=spectra_method,
 						  spectra_options={'time_bandwidth':3.5,
@@ -120,19 +72,41 @@ if FOI==True:
 								   'taper':'nuttall'},
                                                                   #smoothing='konno-ohmachi',smoothing_constant=ko_bandwidth,
                                                                   smoothing=None,
-                                                                  master_curve_method='mean',cutoff_value=0.0,
+                                                                  master_curve_method='median',cutoff_value=0.0,
                                                                   window_length=windowlength,bin_samples=nfrequencies,
                                                                   f_min=initialfreq,f_max=finalfreq,frequencies=freq_bins,w0=w0)
 
 nwindows = len(hvsr_matrix)
+print "nwindows = " + str(nwindows)
 
-lowest_freq = initialfreq #0.3
-highest_freq = finalfreq #50.0
-def find_nearest_idx(array,value):
-	return (np.abs(array-value)).argmin()
+master_curve_full = np.exp(np.mean(np.log(hvsr_matrix),axis=0))
+error = np.sqrt(np.sum((np.log(hvsr_matrix[:][:]) - np.log(master_curve_full)) ** 2,axis=0) / float(nwindows-1))
 
-master_curve_full = np.exp(np.log(hvsr_matrix).mean(axis=0))
-std_full = (np.log(hvsr_matrix[:][:]) - np.log(master_curve))
+# detect and remove outlier windows
+# Simple 3 sigma test. Sum residuals over window, if above 3 sigma, reject.
+outlier_mask = np.ones(hvsr_matrix.shape[0],dtype=bool)
+log_hvsr_matrix = np.log(hvsr_matrix)
+hvsr_matrix_masked = np.ma.array(log_hvsr_matrix, mask=np.logical_not(np.broadcast_to(outlier_mask[:, None],log_hvsr_matrix.shape)))
+while True:
+	error = np.sqrt(np.sum((hvsr_matrix_masked[:][:] - np.log(master_curve_full)) ** 2,axis=0) / float(outlier_mask.sum()-1))
+	residuals = ((log_hvsr_matrix[:][:] - np.log(master_curve_full))/error) ** 2 * outlier_mask[:,None]
+	#res_window_sum = np.sqrt(residuals.sum(axis=1) / master_curve.shape[0])
+	#res_window_sum = np.sqrt(np.quantile(residuals,0.75,axis=1))
+	res_window_sum = np.sqrt(np.median(residuals,axis=1))
+	if np.any(res_window_sum > 1):
+		# mask the max, then recompute master curve
+		outlier_mask[np.argmax(res_window_sum)] = False
+		#hvsr_matrix_masked = np.ma.array(log_hvsr_matrix, mask=np.logical_not(outlier_mask[:, None]))
+		hvsr_matrix_masked = np.ma.array(log_hvsr_matrix, mask=np.logical_not(np.broadcast_to(outlier_mask[:, None],log_hvsr_matrix.shape)))
+		master_curve_full = np.exp(np.ma.mean(hvsr_matrix_masked,axis=0))
+	else:
+		break
+# using the mask we delete rows from hvsr_matrix
+hvsr_matrix = hvsr_matrix[outlier_mask,:]
+nwindows = len(hvsr_matrix)
+print "Non-outlier nwindows = " + str(nwindows)
+		
+	
 
 dhvsr_freq=0.5*(hvsr_freq[1:]+hvsr_freq[:-1])
 x1=hvsr_freq[:-2]
@@ -156,7 +130,7 @@ for ko_bandwidth in ko_bandwidths:
 		# use k-o smoothing to generate "mean" h/v curve
 		smooth_hvsr_matrix[i,:] = np.dot(sm_matrix,hvsr_matrix[i,:])
 		#smooth_hvsr_matrix[i,:] = np.exp(np.dot(sm_matrix,np.log(hvsr_matrix[i,:])))
-	master_curve = np.exp(np.log(smooth_hvsr_matrix).mean(axis=0))
+	master_curve = np.exp(np.median(np.log(smooth_hvsr_matrix),axis=0))
 	# for each interpolated frequency bin, compute sample error of weighted mean (i.e. interpolated value)
 	smoothing_deviation_log = np.absolute(np.log(smooth_hvsr_matrix) -np.log( hvsr_matrix))
 	smoothing_deviation = np.absolute(smooth_hvsr_matrix - hvsr_matrix)
@@ -168,7 +142,7 @@ for ko_bandwidth in ko_bandwidths:
 	e1=smoothing_variance[:-1,:-1]
 	e2=smoothing_variance[1:,1:]
 	dserr = (e2 + e1) / ((hvsr_freq[1:]-hvsr_freq[:-1])**2)
-	dhvsr_curve = dhvsr_matrix.mean(axis=0)
+	dhvsr_curve = np.median(dhvsr_matrix,axis=0)
 	dhvsr_deviation = np.absolute(dhvsr_matrix - dhvsr_curve)
 	dhvsr_variance = np.dot(dhvsr_deviation.T,dhvsr_deviation) / float(nwindows - 1)
 	dhvsr_totalvariance = dhvsr_variance + dserr
@@ -182,7 +156,7 @@ for ko_bandwidth in ko_bandwidths:
 	e3=smoothing_variance[2:,2:]
 	ddhvsr_matrix = 2 * (y1/((x2-x1)*(x3-x1)) - y2/((x3-x2)*(x2-x1)) + y3/((x3-x2)*(x3-x1)))
 	ddserr = 4 * (e1/(((x2-x1)*(x3-x1))**2) + e2/(((x3-x2)*(x2-x1))**2) + e3/(((x3-x2)*(x3-x1))**2))
-	ddhvsr_curve = ddhvsr_matrix.mean(axis=0)
+	ddhvsr_curve = np.median(ddhvsr_matrix,axis=0)
 	ddhvsr_deviation = np.absolute(ddhvsr_matrix - ddhvsr_curve)
 	ddhvsr_variance = np.dot(ddhvsr_deviation.T,ddhvsr_deviation) / float(nwindows - 1)
 	ddhvsr_totalvariance = ddhvsr_variance + ddserr
@@ -285,3 +259,4 @@ for ko_bandwidth in ko_bandwidths:
 np.savetxt(saveprefix+'allhv.txt',all_hvsr, header=ko_bandwidthstr, comments='')
 np.savetxt(saveprefix+'alldhv.txt',all_dhvsr, header=ko_bandwidthstr, comments='')
 np.savetxt(saveprefix+'allddhv.txt',all_ddhvsr, header=ko_bandwidthstr, comments='')
+
