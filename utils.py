@@ -118,6 +118,156 @@ def icwt_band(tfa, delta, freq, w0):
     data = wave.cwt(tfa, delta, scales, 'morlet', w0)
     return data
 
+from scipy.signal import cheby1, lfilter
+
+def cheby_bandpass(lowcut, highcut, fs, order=4):
+    nyq = 0.5 * fs
+    low = lowcut / nyq
+    high = highcut / nyq
+    b, a = cheby1(order, 5, [low,high], 'band', analog=True)
+    return b, a
+ 
+def cheby_bandpass_filter(data, lowcut, highcut, fs, order=4):
+    b, a = cheby_bandpass(lowcut, highcut, fs, order=order)
+    y = lfilter(b, a, data)
+    return y
+
+def zero_phase_cheby_bpf(data, fc, width, fs, order=4):
+    forward = cheby_bandpass_filter(data, fc - 0.5 * width, fc + 0.5 * width, fs, order/2)
+    reverse = np.flipud(forward)
+    return cheby_bandpass_filter(reverse, fc - 0.5 * width, fc + 0.5 * width, fs, order/2)
+
+def get_bands(data, delta, nf, f_min=0, f_max=0, freq_spacing='log', freqs=None):
+    wl = data.shape[0]
+    if f_min == 0:
+        f_min = 1.0 / wl
+    if f_max == 0:
+        f_max = 0.4 / delta
+    
+    no_freqs = False
+    fs = 1.0/delta
+    #print "sample rate = " + str(fs)
+
+    if type(freqs) is not np.ndarray:
+        no_freqs = True
+        freqs = np.logspace(np.log10(f_min), np.log10(f_max), nf)
+
+    if no_freqs and freq_spacing=='linear':
+        oldnf = nf
+        sr = 1.0/delta
+        spacing = sr/wl
+        f_min_idx = math.floor(f_min / spacing)
+        f_max_idx = math.ceil(f_max / spacing)
+        nf = f_max_idx - f_min_idx + 1
+        f_min = f_min_idx + spacing
+        f_max = f_max_idx + spacing
+        freqs = np.linspace(f_min_idx, f_max_idx, nf) * spacing
+
+    # matrix of time series filtered by each band in freqs
+    cfs = np.tile(data,(freqs.shape[0],1))
+    widths = np.zeros(freqs.shape[0])
+    widths[1:-1] = 0.5 * ((freqs[2:] - freqs[1:-1]) + (freqs[1:-1] - freqs[:-2]))
+    widths[0] = widths[1]
+    widths[-1] = widths[-2]
+    for i in xrange(freqs.shape[0]):
+        cfs[i,:] = zero_phase_cheby_bpf(cfs[i,:], freqs[i], widths[i], fs)
+
+    return cfs, freqs
+
+def windowedSincFilterKernelLength(dt,b):
+	bb = b * dt
+	N = int(np.ceil((4 / bb)))
+	if not N % 2: N += 1  # Make sure that N is odd.
+	return N
+
+
+def windowedSincFilterKernel(f,dt, b=0.5):
+	#print "dt = " + str(dt)
+	fL = f * dt * 2
+	fH = fL
+	N = windowedSincFilterKernelLength(dt,b)
+	n = np.arange(N)
+	 
+	# low-pass filter
+	hlpf = np.sinc(fH * (n - (N - 1) / 2.))
+	hlpf *= np.blackman(N)
+	hlpf = hlpf / np.sum(hlpf)
+	 
+	# high-pass filter 
+	hhpf = np.sinc(fL * (n - (N - 1) / 2.))
+	hhpf *= np.blackman(N)
+	hhpf = hhpf / np.sum(hhpf)
+	hhpf = -hhpf
+	hhpf[(N - 1) / 2] += 1
+	 
+	h = np.convolve(hlpf, hhpf)
+	return h
+
+def get_ws_bands(data, delta, nf, f_min=0, f_max=0, freq_spacing='log', freqs=None):
+    wl = data.shape[0]
+    if f_min == 0:
+        f_min = 1.0 / wl
+    if f_max == 0:
+        f_max = 0.4 / delta
+    
+    no_freqs = False
+    fs = 1.0/delta
+    #print "sample rate = " + str(fs)
+
+    if type(freqs) is not np.ndarray:
+        no_freqs = True
+        freqs = np.logspace(np.log10(f_min), np.log10(f_max), nf)
+
+    if no_freqs and freq_spacing=='linear':
+        oldnf = nf
+        sr = 1.0/delta
+        spacing = sr/wl
+        f_min_idx = math.floor(f_min / spacing)
+        f_max_idx = math.ceil(f_max / spacing)
+        nf = f_max_idx - f_min_idx + 1
+        f_min = f_min_idx + spacing
+        f_max = f_max_idx + spacing
+        freqs = np.linspace(f_min_idx, f_max_idx, nf) * spacing
+
+    # matrix of time series filtered by each band in freqs
+    cfs = np.tile(data,(freqs.shape[0],1))
+
+    # zero-pad to nearest power of 2
+    # FIXME we are not accounting for the full convolution in this padded length.
+    # TODO pre-generate convolution filters based on wl and freq array. This will determine zpadlen.
+    #      pre-calc fft of these kernels padded to zpadlen
+    #      pre-calc fft of data. Since we have one b only, this is one FFT thus we are saving time.
+    #      zpadlen should be computed for each filter to make convolved ifft size a power of 2
+    b = 0.5
+    N = windowedSincFilterKernelLength(delta,b)
+    # kernel is bpf so it will be 2N-1
+    zpadlen = int(2 ** math.ceil(math.log(wl+(2*N-1)-1,2)))
+    # Detrend the data.
+    dataz = np.zeros(zpadlen)
+    dataz[:wl] = detrend(data)
+    #good_wl = wl // 2 + 1
+    good_wl = zpadlen // 2 + 1
+    # Create the frequencies. Not used.
+    ffreq = abs(np.fft.fftfreq(zpadlen, delta)[:good_wl])
+    spec = np.fft.rfft(dataz)
+
+    for i in xrange(freqs.shape[0]):
+	h = np.zeros(zpadlen)
+	hh = windowedSincFilterKernel(freqs[i],delta,b)
+	hl = hh.shape[0]
+	h[:hl] = hh
+	off = int((hl - 1) / 2)
+	#print "wl = " + str(wl)
+	#print "off = " + str(off)
+	#print "zpadlen = " + str(zpadlen)
+        #r = np.fft.irfft(spec*np.fft.rfft(h))
+	#print "r len = " + str(r.shape)
+        #cfs[i,:] = r[off:wl+off]
+        cfs[i,:] = np.fft.irfft(spec*np.fft.rfft(h))[off:wl+off]
+        #print "Computed bpf signal for frequency " + str(freqs[i])
+
+    return cfs, freqs
+
 def cwt_TFA(data, delta, nf, f_min=0, f_max=0, w0=8, useMlpy=True, freq_spacing='log', freqs=None):
     """
     :param data: time dependent signal.
