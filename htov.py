@@ -917,6 +917,7 @@ def calculateHVSR(stream, intervals, window_length, method, options,
                 else:
 		    vfs = np.zeros(deltalen)
 		    hfs = np.zeros(deltalen)
+                    numscl = 2.0/float(e.shape[0])
                     for e_ in xrange(e.shape[0]):
                         ei = e[e_]
                         if ei + deltalen + RD_u >= vbpf.shape[0]-1:
@@ -933,13 +934,13 @@ def calculateHVSR(stream, intervals, window_length, method, options,
                         hfbi = math.sin(azimuth)*h1fbi + math.cos(azimuth)*h2fbi
                         #print "Azimuth = " + str(azimuth) + " sin(a) = " + str(math.sin(azimuth)) + " cos(a) = " +str(math.cos(azimuth))
                         corweight = np.sum(vfbi*hfbi)/math.sqrt(np.sum(vfbi**2)*np.sum(hfbi**2)) 
-                        print "For frequency " + str(f) + " correlation weight = " + str(corweight)
+                        #print "For frequency " + str(f) + " correlation weight = " + str(corweight)
                         if corweight > 0.5:
-                            vfs+=vfbi * (corweight ** 2)
-                            hfs+=hfbi * (corweight ** 2)
-                        #print "f = " + str(f) + " h = " + str(np.sum((hfbi * (corweight ** 2)) ** 2)) + " v = " + str(np.sum((vfbi * (corweight ** 2)) ** 2)) + " hv = " + str(np.sqrt(np.sum((hfbi * (corweight ** 2)) ** 2)/np.sum((vfbi * (corweight ** 2)) ** 2)))
+                            vfs+=vfbi * (corweight ** 2) * numscl
+                            hfs+=hfbi * (corweight ** 2) * numscl
+                            #print "f = " + str(f) + " sc = " + str(numscl) + " h = " + str(np.sum((hfbi * (corweight ** 2)) ** 2)) + " v = " + str(np.sum((vfbi * (corweight ** 2)) ** 2)) + " hv = " + str(np.sqrt(np.sum((hfbi * (corweight ** 2)) ** 2)/np.sum((vfbi * (corweight ** 2)) ** 2)))
 
-                    if np.sum(vfs) > 0:
+                    if np.sum(np.fabs(vfs)) > 0:
                         hv_spec[findex] = math.sqrt(np.sum(hfs**2) / np.sum(vfs**2))
                     else:
                         hv_spec[findex] = np.ma.masked

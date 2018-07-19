@@ -21,7 +21,7 @@ from konno_ohmachi_smoothing import calculate_smoothing_matrix_linlog
 if (len(sys.argv) < 9):
 	print "Usage: python htov.py method /path/to/miniSEED/ nfrequencies f_min f_max window_length ko_bandwidths log|lin prefix w0"
 	exit(0)
-
+REMOVE_OUTLIER_WINDOWS = False
 spectra_method=sys.argv[1]
 dr = sys.argv[2]
 nfrequencies = int(sys.argv[3])
@@ -100,30 +100,31 @@ print "nwindows = " + str(nwindows)
 master_curve_full = np.exp(np.mean(np.log(hvsr_matrix),axis=0))
 error = np.sqrt(np.sum((np.log(hvsr_matrix[:][:]) - np.log(master_curve_full)) ** 2,axis=0) / float(nwindows-1))
 
-# detect and remove outlier windows
-# Simple 3 sigma test. Sum residuals over window, if above 3 sigma, reject.
-outlier_mask = np.ones(hvsr_matrix.shape[0],dtype=bool)
-log_hvsr_matrix = np.log(hvsr_matrix)
-hvsr_matrix_masked = np.ma.array(log_hvsr_matrix, mask=np.logical_not(np.broadcast_to(outlier_mask[:, None],log_hvsr_matrix.shape)))
-while True:
-	error = np.sqrt(np.sum((hvsr_matrix_masked[:][:] - np.log(master_curve_full)) ** 2,axis=0) / float(outlier_mask.sum()-1))
-	residuals = ((log_hvsr_matrix[:][:] - np.log(master_curve_full))/error) ** 2 * outlier_mask[:,None]
-	#res_window_sum = np.sqrt(residuals.sum(axis=1) / master_curve.shape[0])
-	#res_window_sum = np.sqrt(np.quantile(residuals,0.75,axis=1))
-	res_window_sum = np.sqrt(np.median(residuals,axis=1))
-	if np.any(res_window_sum > 1):
-		# mask the max, then recompute master curve
-		outlier_mask[np.argmax(res_window_sum)] = False
-		#hvsr_matrix_masked = np.ma.array(log_hvsr_matrix, mask=np.logical_not(outlier_mask[:, None]))
-		hvsr_matrix_masked = np.ma.array(log_hvsr_matrix, mask=np.logical_not(np.broadcast_to(outlier_mask[:, None],log_hvsr_matrix.shape)))
-		master_curve_full = np.exp(np.ma.mean(hvsr_matrix_masked,axis=0))
-	else:
-		break
-# using the mask we delete rows from hvsr_matrix
-hvsr_matrix = hvsr_matrix[outlier_mask,:]
-nwindows = len(hvsr_matrix)
-print "Non-outlier nwindows = " + str(nwindows)
-		
+if REMOVE_OUTLIER_WINDOWS:
+	# detect and remove outlier windows
+	# Simple 3 sigma test. Sum residuals over window, if above 3 sigma, reject.
+	outlier_mask = np.ones(hvsr_matrix.shape[0],dtype=bool)
+	log_hvsr_matrix = np.log(hvsr_matrix)
+	hvsr_matrix_masked = np.ma.array(log_hvsr_matrix, mask=np.logical_not(np.broadcast_to(outlier_mask[:, None],log_hvsr_matrix.shape)))
+	while True:
+		error = np.sqrt(np.sum((hvsr_matrix_masked[:][:] - np.log(master_curve_full)) ** 2,axis=0) / float(outlier_mask.sum()-1))
+		residuals = ((log_hvsr_matrix[:][:] - np.log(master_curve_full))/error) ** 2 * outlier_mask[:,None]
+		#res_window_sum = np.sqrt(residuals.sum(axis=1) / master_curve.shape[0])
+		#res_window_sum = np.sqrt(np.quantile(residuals,0.75,axis=1))
+		res_window_sum = np.sqrt(np.median(residuals,axis=1))
+		if np.any(res_window_sum > 1):
+			# mask the max, then recompute master curve
+			outlier_mask[np.argmax(res_window_sum)] = False
+			#hvsr_matrix_masked = np.ma.array(log_hvsr_matrix, mask=np.logical_not(outlier_mask[:, None]))
+			hvsr_matrix_masked = np.ma.array(log_hvsr_matrix, mask=np.logical_not(np.broadcast_to(outlier_mask[:, None],log_hvsr_matrix.shape)))
+			master_curve_full = np.exp(np.ma.mean(hvsr_matrix_masked,axis=0))
+		else:
+			break
+	# using the mask we delete rows from hvsr_matrix
+	hvsr_matrix = hvsr_matrix[outlier_mask,:]
+	nwindows = len(hvsr_matrix)
+	print "Non-outlier nwindows = " + str(nwindows)
+			
 # generate log frequencies
 logfreq_extended = np.zeros(nfrequencies+2)
 c = (1.0/(nfrequencies-1))*np.log10(finalfreq/initialfreq)
@@ -149,6 +150,21 @@ all_ddhvsr[:,0]=ddhvsr_freq
 print "Number of windows computed = " + str(nwindows)
 bwi=0
 
+def bootstraprows(A,size):
+	""" Bootstrap sample rows of matrix A
+	    comprised of a random sample of size with replacement
+	"""
+	return A[np.random.randint(A.shape[0], size=size), :]
+
+def bagrows(A,n,size):
+	""" Bootstrap appgregate rows of matrix A
+	    Return a matrix of n rows
+	    each row is an average of the bootstrap of size size
+	"""
+	B = np.zeros((n,A.shape[1]))
+	for i in xrange(n):
+		B[i,:] = bootstraprows(A,size).mean(axis=0)
+	return B
 
 for ko_bandwidth in ko_bandwidths:
 	smooth_hvsr_matrix = np.empty((nwindows, nfrequencies))
@@ -158,7 +174,10 @@ for ko_bandwidth in ko_bandwidths:
 	for i in xrange(nwindows):
 		# use k-o smoothing to generate "mean" h/v curve
 		smooth_hvsr_matrix[i,:] = np.dot(sm_matrix,hvsr_matrix[i,:])
-	if 
+
+	# bagging
+	smooth_hvsr_matrix = np.exp(bagrows(np.log(smooth_hvsr_matrix),smooth_hvsr_matrix.shape[0],20))
+
 	master_curve = np.exp(np.median(np.log(smooth_hvsr_matrix),axis=0))
 	# for each interpolated frequency bin, compute sample error of weighted mean (i.e. interpolated value)
 
@@ -252,7 +271,12 @@ for ko_bandwidth in ko_bandwidths:
 	a3.set_xscale('log')
 	
 	a4 = plt.subplot(gs[0,3])
-	a4.hist(errormag,50)
+	nstat = std / diagerr
+	errbins = np.linspace(np.amin(nstat),np.amax(nstat),50)
+	for i in xrange(nwindows):	
+		a4.hist(nstat[i,:],errbins,alpha=1.0/nwindows)
+	
+	#a4.hist(errormag,50)
 	
 	plt.savefig(saveprefix+'_figure.png')
 
