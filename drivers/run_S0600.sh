@@ -12,4 +12,6 @@
 export PATH=/g/data/ha3/lsd547/miniconda2/bin:$PATH
 export PYTHONPATH=/g/data/ha3/lsd547/miniconda2/:/g/data/ha3/lsd547/mlpy/lib/python2.7/site-packages/:/g/data/ha3/lsd547/stockwell_transform/lib/python2.7/site-packages/
 source activate seismicpy27
-python runbatch.py cwt2 '/g/data/ha3/Passive/OvernightData/Southern_Thompson_2016/AdventureWay1/aw01/AW01miniSEED/' 100 0.1 10.0 cwt_lb
+python runbatch.py cwt2 '/g/data/ha3/Passive/OvernightData/STAVELY/S06PS/Seismometer_data/S0600/S0600miniSEED/' \
+    '/g/data/ha3/Passive/OvernightData/STAVELY/S06PS/Seismometer_data/S0600/S0600miniSEED/' \
+    --nfreq 100 --fmin 0.2 --fmax 20.0 --resample-log-freq --output-prefix st_lb
