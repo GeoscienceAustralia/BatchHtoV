@@ -11,7 +11,7 @@
 
 from obspy.core import read
 
-from htov import *
+from .htov import *
 
 def create_HVSR(filename, vertical_channel=None, spectra_method='multitaper',
                 spectra_options={'time_bandwidth':3.5, 'number_of_tapers':

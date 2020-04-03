@@ -131,14 +131,14 @@ def smooth_spectra(spectra, frequencies, bandwidth, count=1):
     if approx_mem_usage < MAX_MEMORY_IN_MB:
         sm_matrix = calculate_smoothing_matrix(frequencies, bandwidth)
         # Eventually apply more than once.
-        for _i in xrange(count):
+        for _i in range(count):
             spectra = np.dot(spectra, sm_matrix)
         return spectra
     else:
         new_spec = np.empty(spectra.shape, 'float32')
         for _j, spec in enumerate(spectra):
-            for _k in xrange(count):
-                for _i in xrange(len(frequencies)):
+            for _k in range(count):
+                for _i in range(len(frequencies)):
                     window = konno_ohmachi_smoothing_window(frequencies,
                                     frequencies[_i], bandwidth)
                     new_spec[_j, _i] = (window * spectra).sum()

@@ -23,8 +23,8 @@ from scipy.signal import argrelextrema
 import pywt
 import mlpy.wavelet as wave
 
-from utils import *
-from konno_ohmachi_smoothing import calculate_smoothing_matrix
+from .utils import *
+from .konno_ohmachi_smoothing import calculate_smoothing_matrix
 
 
 def resampleFilterAndCutTraces(stream, resampling_rate, lowpass_value,
@@ -328,7 +328,7 @@ def calculateHVSR(stream, intervals, window_length, method, options,
                     if _i == 0:
                         sm_matrix = calculate_smoothing_matrix(v_freq,
                                                            smoothing_constant)
-                    for _j in xrange(smoothing_count):
+                    for _j in range(smoothing_count):
                         v_spec = np.dot(v_spec, sm_matrix)
                         h1_spec = np.dot(h1_spec, sm_matrix)
                         h2_spec = np.dot(h2_spec, sm_matrix)
@@ -373,7 +373,7 @@ def calculateHVSR(stream, intervals, window_length, method, options,
                     if _i == 0:
                         sm_matrix = calculate_smoothing_matrix(v_freq,
                                                            smoothing_constant)
-                    for _j in xrange(smoothing_count):
+                    for _j in range(smoothing_count):
                         v_spec = np.dot(v_spec, sm_matrix)
                         h1_spec = np.dot(h1_spec, sm_matrix)
                         h2_spec = np.dot(h2_spec, sm_matrix)
@@ -413,7 +413,7 @@ def calculateHVSR(stream, intervals, window_length, method, options,
                     if _i == 0:
                         sm_matrix = calculate_smoothing_matrix(v_freq,
                                                            smoothing_constant)
-                    for _j in xrange(smoothing_count):
+                    for _j in range(smoothing_count):
                         v_spec = np.dot(v_spec, sm_matrix)
                         h1_spec = np.dot(h1_spec, sm_matrix)
                         h2_spec = np.dot(h2_spec, sm_matrix)
@@ -463,7 +463,7 @@ def calculateHVSR(stream, intervals, window_length, method, options,
             # COI = sqrt(2.) * s
             # , where s is wavelet scale.
             cois = np.int_(np.floor(np.sqrt(2.)*v_scales*stream[0].stats.sampling_rate + 0.5))
-            for findex in xrange(v_freq.shape[0]):
+            for findex in range(v_freq.shape[0]):
                 f = v_freq[findex]
                 rayleighDelay = int(0.25 * (1.0/f) * stream[0].stats.sampling_rate + 0.5) # the + 0.5 at the end is to round to nearest for integer reference
 
@@ -474,7 +474,7 @@ def calculateHVSR(stream, intervals, window_length, method, options,
                                         startIdx:endIdx], np.greater)
                 e = extrema[0]
                 if e.shape[0] == 0:
-                    print "No peaks found for frequency " + str(f)
+                    print("No peaks found for frequency " + str(f))
                     v_spec[findex] = np.ma.masked
                     h_spec[findex] = np.ma.masked
                 else:
@@ -493,7 +493,7 @@ def calculateHVSR(stream, intervals, window_length, method, options,
                     if _i == 0:
                         sm_matrix = calculate_smoothing_matrix(v_freq,
                                                            smoothing_constant)
-                    for _j in xrange(smoothing_count):
+                    for _j in range(smoothing_count):
                         v_spec = np.dot(v_spec, sm_matrix)
                         h_spec = np.dot(h_spec, sm_matrix)
             hv_spec = h_spec / v_spec
@@ -543,7 +543,7 @@ def calculateHVSR(stream, intervals, window_length, method, options,
             # COI = sqrt(2.) * s
             # , where s is wavelet scale.
             cois = np.int_(np.floor(np.sqrt(2.)*v_scales*stream[0].stats.sampling_rate + 0.5))
-            for findex in xrange(v_freq.shape[0]):
+            for findex in range(v_freq.shape[0]):
 
                 f = v_freq[findex]
                 rayleighDelay = int(0.25 * (1.0/f) * stream[0].stats.sampling_rate + 0.5) # the + 0.5 at the end is to round to nearest for integer reference
@@ -555,7 +555,7 @@ def calculateHVSR(stream, intervals, window_length, method, options,
                                         startIdx:endIdx], np.greater)
                 e = extrema[0]
                 if e.shape[0] == 0:
-                    print "No peaks found for frequency " + str(f)
+                    print("No peaks found for frequency " + str(f))
                     v_spec[findex] = np.ma.masked
                     h_spec[findex] = np.ma.masked
                 else:
@@ -575,7 +575,7 @@ def calculateHVSR(stream, intervals, window_length, method, options,
                     if _i == 0:
                         sm_matrix = calculate_smoothing_matrix(v_freq,
                                                            smoothing_constant)
-                    for _j in xrange(smoothing_count):
+                    for _j in range(smoothing_count):
                         v_spec = np.dot(v_spec, sm_matrix)
                         h_spec = np.dot(h_spec, sm_matrix)
             hv_spec = h_spec / v_spec
@@ -623,13 +623,13 @@ def calculateHVSR(stream, intervals, window_length, method, options,
             v_spec = np.ma.array(np.zeros(v_freq.shape[0]),mask=np.ones(v_freq.shape[0]))
             h_spec = np.ma.array(np.zeros(v_freq.shape[0]),mask=np.ones(v_freq.shape[0]))
             #h_spec = np.zeros(v_freq.shape[0])
-            for findex in xrange(v_freq.shape[0]):
+            for findex in range(v_freq.shape[0]):
                 f = v_freq[findex]
                 rayleighDelay = int(0.25 * (1.0/f) * stream[0].stats.sampling_rate + 0.5) # the + 0.5 at the end is to round to nearest for integer reference
                 extrema = argrelextrema(v_cwt[findex,rayleighDelay:-rayleighDelay], np.greater)
                 e = extrema[0]
                 if e.shape[0] == 0:
-                    print "No peaks found for frequency " + str(f)
+                    print("No peaks found for frequency " + str(f))
                     v_spec[findex] = np.ma.masked
                     h_spec[findex] = np.ma.masked
                 else:
@@ -648,7 +648,7 @@ def calculateHVSR(stream, intervals, window_length, method, options,
                     if _i == 0:
                         sm_matrix = calculate_smoothing_matrix(v_freq,
                                                            smoothing_constant)
-                    for _j in xrange(smoothing_count):
+                    for _j in range(smoothing_count):
                         v_spec = np.dot(v_spec, sm_matrix)
                         h_spec = np.dot(h_spec, sm_matrix)
             hv_spec = h_spec / v_spec
@@ -670,12 +670,12 @@ def calculateHVSR(stream, intervals, window_length, method, options,
         # generate frequencies vector
         logfreq = np.zeros(bin_samples)
         c = (1.0 / (bin_samples - 1)) * np.log10(f_max / f_min)
-        for i in xrange(bin_samples):
+        for i in range(bin_samples):
             logfreq[i] = f_min * (10.0 ** (c * i))
         # interpolate to log spacing
 
         interp_hvsr_matrix = np.empty((length, bin_samples))
-        for i in xrange(length):
+        for i in range(length):
             nint = interp1d(good_freq, hvsr_matrix[i, :])
             hv_spec2 = nint(logfreq)
             interp_hvsr_matrix[i, :] = hv_spec2
@@ -704,7 +704,7 @@ def calculateHVSR(stream, intervals, window_length, method, options,
         # Use another method because interpolation might be necessary.
         master_curve = np.empty(len(hvsr_matrix[0, :]))
         error = np.empty((len(master_curve), 2))
-        for _i in xrange(len(master_curve)):
+        for _i in range(len(master_curve)):
             cur_row = hvsr_matrix[:, _i]
             master_curve[_i] = quantile(cur_row, 50)
             error[_i, 0] = quantile(cur_row, 25)

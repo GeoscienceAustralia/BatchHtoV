@@ -32,9 +32,9 @@ class SeisDB(object):
                 self._json_loaded = True
                 self.generateIndex()
             except IOError as e:
-                print "I/O error({0}): {1}".format(e.errorno, e.strerror)
+                print(("I/O error({0}): {1}".format(e.errorno, e.strerror)))
             except ValueError as e:
-                print "JSON Decoding has failed with a value error({0}): {1}".format(e.errorno, e.strerror)
+                print(("JSON Decoding has failed with a value error({0}): {1}".format(e.errorno, e.strerror)))
 
     def generateIndex(self):
         assert self._json_loaded, "Invalid SeisDB object. Try loading a valid JSON file first."
@@ -50,10 +50,10 @@ class SeisDB(object):
                 type_list = []
                 # check if the dtype has been populated
                 dtype_pop = False
-                for _i, (key, value) in enumerate(self._json_dict.iteritems()):
+                for _i, (key, value) in enumerate(self._json_dict.items()):
                     self._indexed_dict[_i] = key
                     temp_list = []
-                    for _j, (sub_key, sub_value) in enumerate(value.iteritems()):
+                    for _j, (sub_key, sub_value) in enumerate(value.items()):
                         # only add some of the attributes to the numpy array to speed up lookup
 
                         if sub_key == "tr_starttime":
@@ -90,7 +90,7 @@ class SeisDB(object):
                 self._valid_index = True
 
             except KeyError as e:
-                print "Indexing JSON dictionary has failed with a key error({0}): {1}".format(e.errorno, e.strerror)
+                print(("Indexing JSON dictionary has failed with a key error({0}): {1}".format(e.errorno, e.strerror)))
 
         else:
             try:
@@ -98,10 +98,10 @@ class SeisDB(object):
                 self._indexed_dict = {}
                 # new dictionary to be sure that starttime and endtime fields are float
                 self._formatted_dict = {}
-                for _i, (key, value) in enumerate(self._json_dict.iteritems()):
+                for _i, (key, value) in enumerate(self._json_dict.items()):
                     self._indexed_dict[_i] = key
                     temp_dict = {}
-                    for _j, (sub_key, sub_value) in enumerate(value.iteritems()):
+                    for _j, (sub_key, sub_value) in enumerate(value.items()):
                         if sub_key == "tr_starttime":
                             temp_dict[sub_key] = float(sub_value)
                         elif sub_key == "tr_endtime":
@@ -112,7 +112,7 @@ class SeisDB(object):
                     self._formatted_dict[_i] = temp_dict
                 self._valid_index = True
             except KeyError as e:
-                print "Indexing JSON dictionary has failed with a key error({0}): {1}".format(e.errorno, e.strerror)
+                print(("Indexing JSON dictionary has failed with a key error({0}): {1}".format(e.errorno, e.strerror)))
 
     def queryByTime(self, sta, chan, query_starttime, query_endtime):
         qs = query_starttime
@@ -186,7 +186,7 @@ class SeisDB(object):
         # Open a new st object
         st = Stream()
 
-        for matched_info in query.values():
+        for matched_info in list(query.values()):
 
             # read the data from the ASDF into stream
             temp_tr = ds.waveforms[matched_info["new_network"] + '.' + matched_info["new_station"]][
@@ -219,7 +219,7 @@ class SeisDB(object):
             try:
                 st.merge(method=1, fill_value=0)
             except:
-                print 'Merge failed for station %s ..' % (matched_info["new_station"])
+                print(('Merge failed for station %s ..' % (matched_info["new_station"])))
                 st = Stream()
             # end try
         # end if
@@ -355,7 +355,7 @@ class StreamAdapter(object):
         try:
             st.merge(method=1, fill_value=0)
         except:
-            print 'Merge failed for station %s ..'%(station_name)
+            print(('Merge failed for station %s ..'%(station_name)))
             st = Stream()
         # end try
         return st
@@ -399,7 +399,7 @@ def getIntervalsInAreas(areas, min_interval=None):
         # Distribute evenly.
         if count > 1:
             space_inbetween = rest // (count - 1)
-            for _i in xrange(count):
+            for _i in range(count):
                 start = area[0] + _i * (min_interval + space_inbetween)
                 end = start + min_interval
                 intervals.append((start, end))
@@ -527,7 +527,7 @@ def st_TFA(data, delta, nf, f_min=0, f_max=0):
     # end func
 
     freqsOut = np.logspace(np.log10(f_min), np.log10(f_max), nf)
-    indices = map(st_freq, freqsOut)
+    indices = list(map(st_freq, freqsOut))
 
     return cfs[indices, :], freqsOut
 #end func

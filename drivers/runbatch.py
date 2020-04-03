@@ -15,7 +15,7 @@ import calendar
 import math
 import sys
 import click
-from sklearn.covariance import GraphLassoCV, ledoit_wolf
+from sklearn.covariance import GraphicalLassoCV, ledoit_wolf
 
 CONTEXT_SETTINGS = dict(help_option_names=['-h', '--help'])
 
@@ -87,7 +87,7 @@ def process(spec_method, data_path, output_path, win_length,
             read_buffer_mb):
     """
     SPEC_METHOD: Method for computing spectra; ['single-taper', 'st', 'cwt2']. \n
-    DATA_PATH: Path to miniseed files \n
+    DATA_PATH: Path to miniseed files or an ASDF file\n
     OUTPUT_PATH: Output folder \n
     """
 
@@ -98,41 +98,41 @@ def process(spec_method, data_path, output_path, win_length,
 
     if(rank == 0):
         print('\n=== RunBatch Parameters ===\n')
-        print('Spec. Method:            %s' % spec_method)
-        print('Data-path:               %s' % data_path)
-        print('Output-path:             %s' % output_path)
-        print('Win. Length:             %d (seconds)' % win_length)
+        print(('Spec. Method:            %s' % spec_method))
+        print(('Data-path:               %s' % data_path))
+        print(('Output-path:             %s' % output_path))
+        print(('Win. Length:             %d (seconds)' % win_length))
         
-        print('Triggering method:       %s' % trigger_method)
+        print(('Triggering method:       %s' % trigger_method))
         if(trigger_method=='zdetect'):
-            print('Trigger Win. Length:     %f (seconds)' % trigger_wlen)
+            print(('Trigger Win. Length:     %f (seconds)' % trigger_wlen))
         else:
-            print('Trigger Win. Length sta: %f (seconds)' % trigger_wlen)
-            print('Trigger Win. Length lta: %f (seconds)' % trigger_wlen_long)
+            print(('Trigger Win. Length sta: %f (seconds)' % trigger_wlen))
+            print(('Trigger Win. Length lta: %f (seconds)' % trigger_wlen_long))
 
-        print('Trigger threshold:       %3.2f' % trigger_threshold)
+        print(('Trigger threshold:       %3.2f' % trigger_threshold))
         if(trigger_lowpass_value):
-            print('Trigger lowpass value:   %3.2f' % trigger_lowpass_value)
+            print(('Trigger lowpass value:   %3.2f' % trigger_lowpass_value))
         if(trigger_highpass_value):
-            print('Trigger highpass value:  %3.2f' % trigger_highpass_value)
+            print(('Trigger highpass value:  %3.2f' % trigger_highpass_value))
         
-        print('nfreq:                   %d' % nfreq)
-        print('fmin:                    %f' % fmin)
-        print('fmax:                    %f' % fmax)
+        print(('nfreq:                   %d' % nfreq))
+        print(('fmin:                    %f' % fmin))
+        print(('fmax:                    %f' % fmax))
         if(lowpass_value):
-            print('lowpass_value:           %f (Hz)' % lowpass_value)
+            print(('lowpass_value:           %f (Hz)' % lowpass_value))
         if(highpass_value):
-            print('highpass_value:          %f (Hz)' % highpass_value)
-        print('freq_sampling:           %s' % freq_sampling)
-        print('resample_log_freq:       %d' % resample_log_freq)
-        print('smooth_spectra_method:   %s' % smooth_spectra_method)
-        print('clip_freq:               %d' % clip_freq)
+            print(('highpass_value:          %f (Hz)' % highpass_value))
+        print(('freq_sampling:           %s' % freq_sampling))
+        print(('resample_log_freq:       %d' % resample_log_freq))
+        print(('smooth_spectra_method:   %s' % smooth_spectra_method))
+        print(('clip_freq:               %d' % clip_freq))
         if(clip_freq):
-            print('\tclip_fmin:             %d' % clip_fmin)
-            print('\tclip_fmax:             %d' % clip_fmax)
-        print('Output-prefix:           %s' % output_prefix)
-        print('Start date and time:     %s' % start_time)
-        print('End date and time:       %s' % end_time)
+            print(('\tclip_fmin:             %d' % clip_fmin))
+            print(('\tclip_fmax:             %d' % clip_fmax))
+        print(('Output-prefix:           %s' % output_prefix))
+        print(('Start date and time:     %s' % start_time))
+        print(('End date and time:       %s' % end_time))
         print('\n===========================\n')
     # end if
 
@@ -190,21 +190,17 @@ def process(spec_method, data_path, output_path, win_length,
     stations = sa.getStationNames()
 
     if(rank == 0):
-        print ""
-        print 'Stations Found:'
-        print stations
-        print ""
+        print("")
+        print('Stations Found:')
+        print(stations)
+        print("")
 
-        count = 0
-        for iproc in np.arange(nproc):
-            for istation in np.arange(np.divide(len(stations), nproc)):
-                proc_stations[iproc].append(stations[count])
-                count += 1
-        # end for
-        for iproc in np.arange(np.mod(len(stations), nproc)):
-            proc_stations[iproc].append(stations[count])
-            count += 1
-        # end for
+        def split_list(lst, npartitions):
+            k, m = divmod(len(lst), npartitions)
+            return [lst[i * k + min(i, m):(i + 1) * k + min(i + 1, m)] for i in range(npartitions)]
+        # end func
+
+        proc_stations = split_list(stations, nproc)
     # end if
 
     # broadcast workload to all procs
@@ -218,14 +214,14 @@ def process(spec_method, data_path, output_path, win_length,
             if station not in station_names: continue
         # end if
 
-        print '\nProcessing station %s..\n'%(station)
+        print('\nProcessing station %s..\n'%(station))
 
         st = sa.getStream(station, start_time=start_time, end_time=end_time)
 
         lonlat = sa.getLonLat(station)
 
         if(not len(st)): continue # no data found
-        else: print st
+        else: print(st)
 
         (master_curve, hvsr_freq,
          error, hvsr_matrix) = batch.create_HVSR( st, spectra_method=spectra_method,
@@ -256,14 +252,14 @@ def process(spec_method, data_path, output_path, win_length,
 
         std = (np.log1p(hvsr_matrix[:][:]) - np.log1p(master_curve))
         errormag = np.zeros(nwindows)
-        for i in xrange(nwindows):
+        for i in range(nwindows):
             errormag[i] = np.dot(std[i, :], std[i, :].T)
         error = np.dot(std.T, std)
         error /= float(nwindows - 1)
 
         if(compute_sparse_covariance):
-            print "Computing sparse model covariance"
-            sp_model = GraphLassoCV()
+            print("Computing sparse model covariance")
+            sp_model = GraphicalLassoCV()
             sp_model.fit(std)
             sp_cov = sp_model.covariance_
             sp_prec = sp_model.precision_
@@ -277,12 +273,12 @@ def process(spec_method, data_path, output_path, win_length,
             error = error[lclip:uclip, lclip:uclip]
         #end if
 
-        print "Master curve shape: " + str(master_curve.shape)
-        print master_curve
-        print "Frequencies shape: " + str(hvsr_freq.shape)
-        print hvsr_freq
-        print "Error shape: " + str(error.shape)
-        print error
+        print("Master curve shape: " + str(master_curve.shape))
+        print(master_curve)
+        print("Frequencies shape: " + str(hvsr_freq.shape))
+        print(hvsr_freq)
+        print("Error shape: " + str(error.shape))
+        print(error)
 
         diagerr = np.sqrt(np.diag(error))
         lerr = np.exp(np.log(master_curve) - diagerr)
@@ -303,7 +299,7 @@ def process(spec_method, data_path, output_path, win_length,
         np.savetxt(saveprefix + '.error.txt', error)
         np.savetxt(saveprefix + '.inverror.txt', np.linalg.inv(error))
         logdeterr = np.linalg.slogdet(error)
-        print "Log determinant of error matrix: " + str(logdeterr)
+        print("Log determinant of error matrix: " + str(logdeterr))
         np.savetxt(saveprefix + '.logdeterror.txt', np.array(logdeterr))
 
         if(compute_sparse_covariance):
@@ -311,7 +307,7 @@ def process(spec_method, data_path, output_path, win_length,
             np.savetxt(saveprefix + '.sperror.txt', sp_cov)
             np.savetxt(saveprefix + '.invsperror.txt', sp_prec)
             logdetsperr = np.linalg.slogdet(sp_cov)
-            print "Log determinant of sparse error matrix: " + str(logdetsperr)
+            print("Log determinant of sparse error matrix: " + str(logdetsperr))
             np.savetxt(saveprefix + '.logdetsperror.txt', np.array(logdetsperr))
         # end if
 
