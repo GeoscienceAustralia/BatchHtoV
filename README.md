@@ -30,18 +30,23 @@ This utility has been extended to implement HVTFA using CWT and Stockwell transf
 * `module load hdf5/1.10.5p`
 
 #### mlpy
-* Download `mlpy`
-* `pip install --global-option=build_ext --global-option="-I/apps/gsl/1.15/include/" --global-option="-L/apps/gsl/1.15/lib/" mlpy-3.5.0.tar.gz --user`
+* Download [mlpy v3.5]
+* `pip3.6 install --global-option=build_ext --global-option="-I/apps/gsl/1.6/include/" --global-option="-L/apps/gsl/2.6/lib/" mlpy-3.5.0.tar.gz --user`
 
 #### stockwell-transform
-* `pip install git+https://github.com/synergetics/stockwell_transform --user`
+* `pip3.6 install git+https://github.com/synergetics/stockwell_transform --user`
 
 #### mtspec
-* `pip install mtspec --user`
+* `pip3.6 install mtspec --user`
 
 #### h5py
-* `CC="mpicc" HDF5_MPI="ON" HDF5_DIR=/apps/hdf5/1.10.2p HDF5_VERSION=1.10.2 pip install --no-binary=h5py h5py --user`
+​
+  1. `git clone --single-branch --branch 2.10.0.gadi_tweaks https://github.com/rh-downunder/h5py.git` Pull a branch (based on version 2.10.0) from h5py repository from github fork of h5py, adapted for Gadi, for purpose of custom build
+  2. `cd h5py`
+  3. `CC=mpicc python setup.py configure --mpi --hdf5=/apps/hdf5/1.10.5p/` Configure with mpi enabled  
+  4. `python setup.py build` Build h5py
+  5. `python setup.py install --user` Install in user space
 
 #### pyasdf
-* `pip install pyasdf --user`
+* `pip3.6 install pyasdf --user`
 
