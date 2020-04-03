@@ -40,12 +40,11 @@ This utility has been extended to implement HVTFA using CWT and Stockwell transf
 * `pip3.6 install mtspec --user`
 
 #### h5py
-​
-  1. `git clone --single-branch --branch 2.10.0.gadi_tweaks https://github.com/rh-downunder/h5py.git` Pull a branch (based on version 2.10.0) from h5py repository from github fork of h5py, adapted for Gadi, for purpose of custom build
-  2. `cd h5py`
-  3. `CC=mpicc python setup.py configure --mpi --hdf5=/apps/hdf5/1.10.5p/` Configure with mpi enabled  
-  4. `python setup.py build` Build h5py
-  5. `python setup.py install --user` Install in user space
+1. `git clone --single-branch --branch 2.10.0.gadi_tweaks https://github.com/rh-downunder/h5py.git` Pull a branch (based on version 2.10.0) from h5py repository from github fork of h5py, adapted for Gadi, for purpose of custom build
+2. `cd h5py`
+3. `CC=mpicc python setup.py configure --mpi --hdf5=/apps/hdf5/1.10.5p/` Configure with mpi enabled  
+4. `python setup.py build` Build h5py
+5. `python setup.py install --user` Install in user space
 
 #### pyasdf
 * `pip3.6 install pyasdf --user`
