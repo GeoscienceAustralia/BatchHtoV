@@ -19,16 +19,15 @@ This utility has been extended to implement HVTFA using CWT and Stockwell transf
 
 ## Installation
 
-### Raijin
+### Gadi
 
 #### Load Requisite Modules
 * `module purge`
-* `module load gsl/1.15`
-* `module load fftw3/3.3.4`
-* `module load python/2.7.13`
-* `module load openmpi/2.1.1`
-* `module load mpi4py/3.0.0-py2`
-* `module load hdf5/1.10.2p`
+* `module load gsl`
+* `module load fftw3/3.3.8`
+* `module load python3-as-python`
+* `module load openmpi/2.1.6-mt`
+* `module load hdf5/1.10.5p`
 
 #### mlpy
 * Download `mlpy`
