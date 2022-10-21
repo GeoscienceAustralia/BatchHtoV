@@ -128,10 +128,10 @@ def create_HVSR(filename, vertical_channel=None, spectra_method='multitaper',
     if new_sample_rate is None:
         new_sample_rate = stream[0].stats.sampling_rate
     sampling_rate = stream[0].stats.sampling_rate
-    if lowpass_value >= 0.5 * sampling_rate - 1:
+
+    if (lowpass_value) and (lowpass_value >= 0.5 * sampling_rate - 1):
         lowpass_value = None
-    if highpass_value == 0.0:
-        highpass_value = 0.0
+
     # Resample, filter and cut the Traces.
     resampleFilterAndCutTraces(stream, new_sample_rate, lowpass_value,
                                highpass_value, zerophase, corners, starttime,

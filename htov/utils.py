@@ -7,7 +7,8 @@ from obspy.core import UTCDateTime, Stream
 from scipy.signal.signaltools import detrend
 from obspy.signal.tf_misfit import cwt
 import mlpy.wavelet as wave
-import st
+import stockwell as st
+import pywt
 import json
 from scipy import interpolate
 import functools
@@ -342,7 +343,7 @@ class StreamAdapter(object):
                 st += cst.slice(start_time, end_time)
             # end for
         elif(self._input_type=='asdf'):
-            if(self._has_jason_db):
+            if(self._has_jason_db and 0):
                 st = self._ds_jason_db.fetchDataByTime(self._ds, station_name, '*',
                                                        start_time.timestamp,
                                                        end_time.timestamp)
@@ -496,7 +497,7 @@ def cwt_TFA(data, delta, nf, f_min=0, f_max=0, w0=8, useMlpy=True, freq_spacing=
         return cfs, freqs, scales
     else:
         # spacing option only applies to mlpy
-        if freq_spacing=='linear':
+        if (freq_spacing == 'linear'):
             oldnf = nf
             sr = 1.0/delta
             spacing = sr/wl
@@ -505,15 +506,25 @@ def cwt_TFA(data, delta, nf, f_min=0, f_max=0, w0=8, useMlpy=True, freq_spacing=
             nf = f_max_idx - f_min_idx + 1
 
             freqs = np.linspace(f_min_idx, f_max_idx, nf) * spacing
+        # end if
 
-        # using morlet cwt from mlpy
-        npts = data.shape[0]
+        if (0):
+            # using morlet cwt from mlpy
+            npts = data.shape[0]
 
-        fperiods = 1. / freqs
-        scales = wave.scales_from_fourier(fperiods, 'morlet', w0)
-        cfs = wave.cwt(data, delta, scales, 'morlet', w0)
+            fperiods = 1. / freqs
+            scales = wave.scales_from_fourier(fperiods, 'morlet', w0)
+            cfs = wave.cwt(data, delta, scales, 'morlet', w0)
 
-        return cfs, freqs, scales
+            return cfs, freqs, scales
+        else:
+            scales = pywt.scale2frequency('cmor2-1.25', freqs * delta)
+            cfs, r_freqs = pywt.cwt(data, scales, 'cmor2-1.25', delta)
+
+            assert np.allclose(freqs, r_freqs), 'Unknown error in pywt. Aborting..'
+
+            return cfs, freqs, scales*delta
+        # end if
     # end if
 # end func
 

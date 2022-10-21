@@ -265,7 +265,7 @@ def findCommonQuietAreas(areas, length, min_length):
                                                  min_length)
     return common_quiet_times
 
-def calculateHVSR(stream, intervals, window_length, method, options,
+def calculateHVSR(stream, _intervals, window_length, method, options,
                   master_method, cutoff_value, smoothing=None,
                   smoothing_count=1, smoothing_constant=40,
                   message_function=None, bin_samples=100, bin_sampling='log',
@@ -274,9 +274,9 @@ def calculateHVSR(stream, intervals, window_length, method, options,
     Calculates the HVSR curve.
     """
     # Some arithmetics.
-    #intervals = intervals[0:3]
+    intervals = np.array(_intervals, dtype='i4')
     length = len(intervals)
-    good_length = window_length // 2 + 1
+    good_length = int(window_length // 2 + 1)
     # The stream that will be used.
     # XXX: Add option to use the raw data stream.
     # Create the matrix that will be used to store the single spectra.
@@ -747,8 +747,9 @@ def detectTraceOrientation(stream):
     check = [True for trace in stream if trace.stats.orientation=='vertical']
     if len(check) == 1:
         return
+
     # The last one will be the vertical component.
     for trace in stream:
-        trace.stats.orientation == 'horizontal'
-    stream[-1].stats.oriantatio = 'vertical'
-
+        trace.stats.orientation = 'horizontal'
+    stream[-1].stats.oriantation = 'vertical'
+# end func
