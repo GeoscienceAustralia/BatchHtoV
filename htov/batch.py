@@ -12,19 +12,21 @@
 from obspy.core import read
 
 from .htov import *
+from htov.utils import SpooledMatrix
 
-def create_HVSR(filename, vertical_channel=None, spectra_method='multitaper',
+def create_HVSR(filename, spooled_storage:SpooledMatrix,
+                vertical_channel=None, spectra_method='multitaper',
                 spectra_options={'time_bandwidth':3.5, 'number_of_tapers':
                 None, 'quadratic':False, 'adaptive':True,
                 'nfft':None},smoothing='konno-ohmachi',
-                master_curve_method='mean', lowpass_value=None,
+                lowpass_value=None,
                 highpass_value=None, new_sample_rate=None, zerophase=False,
                 corners=4, starttime=None, endtime=None,
                 triggering_options={'method':'zdetect',
                           'trigger_wlen': 0.5,
                           'trigger_wlen_long': 30,
                           'trigger_threshold': 0.95},
-                window_length=25, cutoff_value=0.1,
+                window_length=25,
                 message_function=None,bin_samples=100, bin_sampling='log',
                 f_min=0.1,f_max=50.0, resample_log_freq=False):
     """
@@ -48,9 +50,6 @@ def create_HVSR(filename, vertical_channel=None, spectra_method='multitaper',
         - for single taper: 'taper'
         Every necessary options needs to be available or otherwise it will
         result in an error.
-    :param master_curve_method: string
-        How to determine the master curve. Available are 'mean', 'geometric
-        average', 'full gaussian' , and 'median'
     :param lowpass_value: float
         Lowpass filter value. Will not apply lowpass filter if None is given.
     :param highpass_value: float
@@ -83,11 +82,6 @@ def create_HVSR(filename, vertical_channel=None, spectra_method='multitaper',
     :param message_function: Python function
         If given, a string will be passed to this function to document the
         current progress.
-    :param cutoff_value: float
-        If given, than this value determines which part of the bottom and top
-        frequencies are discarded for the calculation of the master HVSR curve.
-        e.g. a value of 0.1 will throw away the bottom and top 10% for each
-        frequency.
     """
     if type(filename) == str:
         # Read the file
@@ -149,13 +143,15 @@ def create_HVSR(filename, vertical_channel=None, spectra_method='multitaper',
     if not len(intervals):
         print('Warning: No quiet intervals found. Aborting..')
         return None, None, None, None
-    hvsr_matrix, hvsr_freq, length, master_curve, error = \
-            calculateHVSR(stream, intervals, window_length, spectra_method,
-                          spectra_options, master_curve_method, cutoff_value,
-			              smoothing=smoothing,
-                          message_function=message_function,
-                          bin_samples=bin_samples,
-                          bin_sampling=bin_sampling,
-                          f_min=f_min,f_max=f_max,
-                          resample_log_freq=resample_log_freq)
-    return master_curve, hvsr_freq, error, hvsr_matrix
+    # end if
+
+    calculateHVSR(stream, intervals, spooled_storage,
+                  window_length, spectra_method,
+                  spectra_options,
+                  smoothing=smoothing,
+                  message_function=message_function,
+                  bin_samples=bin_samples,
+                  bin_sampling=bin_sampling,
+                  f_min=f_min,f_max=f_max,
+                  resample_log_freq=resample_log_freq)
+# end func

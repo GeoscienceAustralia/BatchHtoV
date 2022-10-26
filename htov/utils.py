@@ -12,7 +12,9 @@ import pywt
 import json
 from scipy import interpolate
 import functools
+from tempfile import SpooledTemporaryFile
 from collections import defaultdict
+from seismic.ASDFdatabase.FederatedASDFDataSet import FederatedASDFDataSet
 
 class SeisDB(object):
     '''
@@ -576,3 +578,101 @@ def single_taper_spectrum(data, delta, taper_name=None):
     data *= taper
     spec = abs(np.fft.rfft(data)) ** 2
     return spec, freq
+#end func
+
+class SpooledMatrix:
+    def __init__(self, ncols, dtype=np.float32, max_size_mb=2048, prefix='', dir=None):
+        self._prefix = prefix
+        self._ncols = ncols
+        self._nrows = 0
+        self._dtype = dtype
+        self._max_size_mb = max_size_mb
+
+        self._file = SpooledTemporaryFile(prefix = self._prefix, mode = 'w+b', max_size = max_size_mb * 1024**2, dir=dir)
+    # end func
+
+    @property
+    def ncols(self):
+        return self._ncols
+    # end func
+
+    @property
+    def nrows(self):
+        return self._nrows
+    # end func
+
+    def reset_ncols(self, ncols:int):
+        if(self._ncols == ncols): return
+        assert self._nrows == 0, 'Cannot reset ncols; there exists data writen earlier..'
+        self._ncols = ncols
+    # end func
+
+    def write_row(self, row_array):
+        assert(row_array.dtype == self._dtype)
+        assert(len(row_array.shape) == 1)
+        assert(row_array.shape[0] == self._ncols)
+
+        self._file.write(row_array.data)
+
+        self._nrows += 1
+    # end func
+
+    def read_row(self, row_idx):
+        if(row_idx < self._nrows):
+            seek_loc = row_idx * self._ncols * np.dtype(self._dtype).itemsize
+            self._file.seek(seek_loc)
+
+            nbytes = self._ncols * np.dtype(self._dtype).itemsize
+            row = np.frombuffer(self._file.read(nbytes), dtype=self._dtype)
+
+            return row
+        else:
+            return None
+    # end func
+
+    def __del__(self):
+        self._file.close()
+    # end func
+# end class
+
+def waveform_iterator3c(fds:FederatedASDFDataSet, net:str, sta:str,
+                        st:UTCDateTime, et:UTCDateTime, step=86400):
+    # get stations
+    rows = fds.get_stations(st, et, network=net, station=sta)
+    uloc_dict = defaultdict(set)  # dict of channels keyed by location code
+    for row in rows: uloc_dict[row[2]].add(row[3])
+
+    wst = st
+    wet = st
+    while (wet < et):
+        if (wst + step > et):
+            wet = et
+        else:
+            wet = wst + step
+        # end if
+
+        wd = Stream()
+        for loc in uloc_dict.keys():
+            channels = uloc_dict[loc]
+            if(len(channels)>3):
+                print('Expecting 3 but found {} channels for {}.{}.{}. '
+                      'Moving along..'.format(len(channels), net, sta, loc))
+                continue
+            # end if
+            for cha in channels:
+                wd += fds.get_waveforms(net, sta, loc, cha, wst, wet)
+            # end for
+
+            # merge filling gaps
+            try:
+                wd.merge(method=1, fill_value=0)
+            except:
+                print(('Merge failed for station %s.%s.%s..' % (net, sta, loc)))
+                wd = Stream()
+            # end try
+            yield wd
+        # end for
+
+        wst += step
+    # wend
+# end func

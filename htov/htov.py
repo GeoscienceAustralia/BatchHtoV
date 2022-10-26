@@ -19,7 +19,7 @@ from obspy.signal.trigger import z_detect as zdetect, classic_sta_lta, recursive
 from scipy.signal import resample
 from scipy.interpolate import interp1d
 from scipy.signal import argrelextrema
-
+from htov.utils import SpooledMatrix
 import pywt
 import mlpy.wavelet as wave
 
@@ -265,9 +265,9 @@ def findCommonQuietAreas(areas, length, min_length):
                                                  min_length)
     return common_quiet_times
 
-def calculateHVSR(stream, _intervals, window_length, method, options,
-                  master_method, cutoff_value, smoothing=None,
-                  smoothing_count=1, smoothing_constant=40,
+def calculateHVSR(stream, _intervals, spooled_storage:SpooledMatrix,
+                  window_length, method, options,
+                  smoothing=None, smoothing_count=1, smoothing_constant=40,
                   message_function=None, bin_samples=100, bin_sampling='log',
                   f_min=0.1,f_max=50.0, resample_log_freq=False):
     """
@@ -280,14 +280,13 @@ def calculateHVSR(stream, _intervals, window_length, method, options,
     # The stream that will be used.
     # XXX: Add option to use the raw data stream.
     # Create the matrix that will be used to store the single spectra.
-    hvsr_matrix = np.empty((length, good_length))
-    rms_matrix = np.empty((length))
+    hvsr_matrix = np.empty((length, good_length), dtype='f4')
     if method == 'multitaper':
         if options['nfft']:
             good_length = options['nfft']// 2 + 1
             # Create the matrix that will be used to store the single
             # spectra.
-            hvsr_matrix = np.empty((length, good_length))
+            hvsr_matrix = np.empty((length, good_length), dtype='f4')
         # Loop over each interval
         for _i, interval in enumerate(intervals):
             if message_function:
@@ -429,7 +428,7 @@ def calculateHVSR(stream, _intervals, window_length, method, options,
         good_length = bin_samples
         #f_min = 0.20
         #f_max = 20.0
-        hvsr_matrix = np.ma.empty((length, good_length))
+        hvsr_matrix = np.ma.empty((length, good_length), dtype='f4')
         num_good_intervals = 0
         for _i, interval in enumerate(intervals):
             if message_function:
@@ -508,7 +507,7 @@ def calculateHVSR(stream, _intervals, window_length, method, options,
     elif method == 'cwt2':
         good_length = bin_samples
 
-        hvsr_matrix = np.ma.empty((length, good_length))
+        hvsr_matrix = np.ma.empty((length, good_length), dtype='f4')
         num_good_intervals = 0
         for _i, interval in enumerate(intervals):
             if message_function:
@@ -584,7 +583,7 @@ def calculateHVSR(stream, _intervals, window_length, method, options,
                 good_length = v_freq.shape[0]
                 # Create the matrix that will be used to store the single
                 # spectra.
-                hvsr_matrix = np.empty((length, good_length))
+                hvsr_matrix = np.empty((length, good_length), dtype='f4')
             # Store it into the matrix if it has the correct length.
             hvsr_matrix[num_good_intervals, 0:hv_spec.shape[0]] = hv_spec
             num_good_intervals += 1
@@ -596,7 +595,7 @@ def calculateHVSR(stream, _intervals, window_length, method, options,
         #f_min = 0.25
         #f_max = 20.0
 
-        hvsr_matrix = np.ma.empty((length, good_length))
+        hvsr_matrix = np.ma.empty((length, good_length), dtype='f4')
         num_good_intervals = 0
         for _i, interval in enumerate(intervals):
             if message_function:
@@ -674,7 +673,7 @@ def calculateHVSR(stream, _intervals, window_length, method, options,
             logfreq[i] = f_min * (10.0 ** (c * i))
         # interpolate to log spacing
 
-        interp_hvsr_matrix = np.empty((length, bin_samples))
+        interp_hvsr_matrix = np.empty((length, bin_samples), dtype='f4')
         for i in range(length):
             nint = interp1d(good_freq, hvsr_matrix[i, :])
             hv_spec2 = nint(logfreq)
@@ -684,41 +683,12 @@ def calculateHVSR(stream, _intervals, window_length, method, options,
         hvsr_matrix = interp_hvsr_matrix
     # end if
 
-    # Copy once to be able to calculate standard deviations.
-    original_matrix = deepcopy(hvsr_matrix)
-    # Sort it for quantile operations.
-    hvsr_matrix.sort(axis=0)
-    # Only senseful for mean calculations. Omitted for the median.
-    if cutoff_value != 0.0 and master_method != 'median':
-        hvsr_matrix = hvsr_matrix[int(length * cutoff_value):
-                              int(ceil(length * (1 - cutoff_value))), :]
-    length = len(hvsr_matrix)
-    # Mean.
-    if master_method == 'mean':
-        master_curve = hvsr_matrix.mean(axis=0)
-    # Geometric average.
-    elif master_method == 'geometric average':
-        master_curve = hvsr_matrix.prod(axis=0) ** (1.0 / length)
-    # Median.
-    elif master_method == 'median':
-        # Use another method because interpolation might be necessary.
-        master_curve = np.empty(len(hvsr_matrix[0, :]))
-        error = np.empty((len(master_curve), 2))
-        for _i in range(len(master_curve)):
-            cur_row = hvsr_matrix[:, _i]
-            master_curve[_i] = quantile(cur_row, 50)
-            error[_i, 0] = quantile(cur_row, 25)
-            error[_i, 1] = quantile(cur_row, 75)
-    # Calculate the standard deviation for the two mean methods.
-    if master_method != 'median':
-        error = np.empty((len(master_curve), 2))
-        std = (hvsr_matrix[:][:] - master_curve) ** 2
-        std = std.sum(axis=0)
-        std /= float(length)
-        std **= 0.5
-        error[:, 0] = master_curve - std
-        error[:, 1] = master_curve + std
-    return original_matrix, good_freq, length, master_curve, error
+    # Adjust columns in spooled_storage if needed
+    spooled_storage.reset_ncols(hvsr_matrix.shape[1])
+
+    # append results to spooled_storage
+    for i in np.arange(len(hvsr_matrix)): spooled_storage.write_row(hvsr_matrix[i, :])
+# end func
 
 def detectTraceOrientation(stream):
     """
